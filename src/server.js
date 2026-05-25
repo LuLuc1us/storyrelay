@@ -196,6 +196,7 @@ function createRoom({ name, settings }) {
     openingOptions: [],
     selectedOpeningId: null,
     currentRequirement: null,
+    endVotes: [],
     turnIndex: 0,
     playerTurnsCompleted: 0,
     createdAt: now(),
@@ -352,9 +353,31 @@ async function handleApi(req, res) {
         room.status = "playing";
         room.turnIndex = 0;
         room.playerTurnsCompleted = 0;
+        room.endVotes = [];
         room.currentRound = 1;
         room.currentTurnPlayerId = room.players[0].id;
         room.currentRequirement = await createRequirement(1, getRoomStoryText(room));
+        broadcast(code);
+        sendJson(res, 200, { room: publicRoom(room) });
+        return;
+      }
+
+      if (req.method === "POST" && action === "vote-ending") {
+        if (room.status !== "playing") return sendJson(res, 409, { error: "当前不能投票结束。" });
+        if (!room.players.some((player) => player.id === playerId)) {
+          return sendJson(res, 404, { error: "玩家不存在。" });
+        }
+
+        room.endVotes = (room.endVotes || []).filter((id) => id !== playerId);
+        if (body.vote !== false) room.endVotes.push(playerId);
+
+        const needed = Math.floor(room.players.length / 2) + 1;
+        if (room.endVotes.length >= needed) {
+          room.status = "ending";
+          room.currentTurnPlayerId = null;
+          room.currentRequirement = null;
+        }
+
         broadcast(code);
         sendJson(res, 200, { room: publicRoom(room) });
         return;
@@ -422,6 +445,7 @@ async function handleApi(req, res) {
         if (room.status !== "ending") return sendJson(res, 409, { error: "当前不能继续加写。" });
         room.maxRounds += room.players.length;
         room.status = "playing";
+        room.endVotes = [];
         room.turnIndex = 0;
         room.currentRound = room.playerTurnsCompleted + 1;
         room.currentTurnPlayerId = room.players[0].id;

@@ -255,6 +255,18 @@ label {
   padding: 13px;
 }
 
+.vote-box {
+  border: 1px solid #dccfba;
+  border-radius: 8px;
+  background: #fbf7ef;
+  padding: 13px;
+}
+
+.vote-box p {
+  margin: 0;
+  line-height: 1.65;
+}
+
 .assist-box p {
   margin: 0;
   line-height: 1.75;

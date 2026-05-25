@@ -370,6 +370,31 @@ function renderRequirement() {
   `;
 }
 
+function renderEndingVote(room) {
+  const votes = room.endVotes || [];
+  const needed = Math.floor(room.players.length / 2) + 1;
+  const hasVoted = votes.includes(state.player?.id);
+  const names = votes.map(playerName).join("、");
+
+  return `
+    <div class="vote-box stack">
+      <div class="row">
+        <strong>结尾投票</strong>
+        <span class="pill">${votes.length} / ${needed}</span>
+      </div>
+      <p class="muted">${
+        votes.length >= needed
+          ? "已达成收束共识，准备进入结尾。"
+          : "觉得故事差不多了，可以投票进入结尾。超过半数同意后收束故事。"
+      }</p>
+      ${names ? `<p class="muted">已投票：${escapeHtml(names)}</p>` : ""}
+      <button id="endingVote" class="${hasVoted ? "secondary" : "warning"}" type="button">
+        ${hasVoted ? "撤回结束投票" : "投票进入结尾"}
+      </button>
+    </div>
+  `;
+}
+
 function renderPolishPanel() {
   if (state.isPolishing) {
     return `<div class="assist-box muted">AI 主持人正在整理语句……</div>`;
@@ -469,6 +494,7 @@ function renderPlaying() {
           ${room.players.map((player) => `<span class="pill">${escapeHtml(player.name)}</span>`).join("")}
         </div>
         ${renderRequirement()}
+        ${renderEndingVote(room)}
         ${
           isCurrentPlayer()
             ? `
@@ -497,10 +523,31 @@ function renderPlaying() {
       updateWordCounter(room);
     });
     bindPolishActions();
+    document.querySelector("#endingVote")?.addEventListener("click", async () => {
+      try {
+        const hasVoted = (room.endVotes || []).includes(state.player?.id);
+        await api.post(`/api/rooms/${room.code}/vote-ending`, actionBody({ vote: !hasVoted }));
+        setError("");
+      } catch (error) {
+        setError(error.message);
+      }
+    });
     document.querySelector("#submitSegment").addEventListener("click", async () => {
       try {
         await api.post(`/api/rooms/${room.code}/submit-segment`, actionBody({ text: state.draft }));
         clearDraftAssist();
+        setError("");
+      } catch (error) {
+        setError(error.message);
+      }
+    });
+  }
+
+  if (!draft) {
+    document.querySelector("#endingVote")?.addEventListener("click", async () => {
+      try {
+        const hasVoted = (room.endVotes || []).includes(state.player?.id);
+        await api.post(`/api/rooms/${room.code}/vote-ending`, actionBody({ vote: !hasVoted }));
         setError("");
       } catch (error) {
         setError(error.message);
