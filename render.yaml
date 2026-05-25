@@ -10,4 +10,10 @@ services:
       - key: NODE_ENV
         value: production
       - key: AI_PROVIDER
-        value: local
+        value: openrouter
+      - key: OPENROUTER_MODEL
+        value: meta-llama/llama-3.2-3b-instruct:free
+      - key: APP_PUBLIC_URL
+        value: https://story-relay.onrender.com
+      - key: OPENROUTER_API_KEY
+        sync: false
