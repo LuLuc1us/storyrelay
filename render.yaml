@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: story-relay
+    runtime: node
+    plan: free
+    buildCommand: ""
+    startCommand: node src/server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: AI_PROVIDER
+        value: local
