@@ -112,3 +112,15 @@ public/index.html  网页入口
 见 [DEPLOYMENT.md](/Users/lucius/Documents/Codex/2026-05-25/story-relay-1-2-3-ai/DEPLOYMENT.md)。
 
 当前版本已经可以部署成单实例线上 Alpha。需要注意：房间和故事仍然保存在服务内存中，服务重启会丢失。正式运营前建议接 Supabase 或 Redis 做持久化。
+
+## Supabase 持久化
+
+如果设置了 Supabase 环境变量，房间状态会自动保存到 `story_rooms` 表，服务重启后会恢复已有房间：
+
+```bash
+export SUPABASE_URL="你的 Supabase Project URL"
+export SUPABASE_SERVICE_ROLE_KEY="你的 service_role key"
+export SUPABASE_ROOMS_TABLE="story_rooms"
+```
+
+先在 Supabase SQL Editor 运行 [supabase/schema.sql](/Users/lucius/Documents/Codex/2026-05-25/story-relay-1-2-3-ai/supabase/schema.sql)。不要把 `service_role key` 放到前端或 GitHub，它只应该放在 Render 的 Environment 里。

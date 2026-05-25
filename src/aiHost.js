@@ -183,16 +183,17 @@ function weaveTwist(text, twist) {
 export async function polishSegment(text, requirement, storyText = "") {
   const aiPolished = await generateText({
     instructions:
-      "你是故事接龙游戏里的中文编辑助手。请轻度润色玩家段落，让句子更明确、更顺、更可读。必须保留玩家原意和剧情事实，不要扩写成另一段故事，不要替玩家新增重大设定。输出润色后的段落正文即可。",
+      "你是故事接龙游戏里的中文编辑助手。请轻度润色玩家段落，让句子更明确、更顺、更可读。必须保留玩家原意和剧情事实，不要扩写成另一段故事，不要替玩家新增重大设定。只输出润色后的段落正文，不要写标题、解释、评价、理由、项目符号或修改说明。",
     input: `当前故事上下文：\n${storyText || "暂无。"}\n\n本轮要求：关键词「${requirement?.keyword || "无"}」，情绪「${requirement?.emotion || "无"}」，转折「${requirement?.twist || "无"}」\n\n玩家原文：\n${text}\n\n请润色为一小段中文，尽量保留原文长度，确保关键词仍然出现。`,
     fallback: "",
     maxOutputTokens: 260
   });
 
-  if (aiPolished && (!requirement?.keyword || aiPolished.includes(requirement.keyword))) {
+  const cleanedAIPolished = sanitizePolishedSegment(aiPolished);
+  if (cleanedAIPolished && (!requirement?.keyword || cleanedAIPolished.includes(requirement.keyword))) {
     return {
       original: text,
-      polished: trimToLength(ensureSentence(aiPolished), 220),
+      polished: trimToLength(ensureSentence(cleanedAIPolished), 220),
       notes: [
         "使用真实 AI 做了轻度润色，保留原意和剧情方向。",
         requirement?.keyword ? `检查了本轮关键词「${requirement.keyword}」。` : "检查了本轮要求。",
@@ -238,6 +239,68 @@ function trimToLength(text, maxLength) {
   const cleaned = String(text || "").trim();
   if (cleaned.length <= maxLength) return cleaned;
   return `${cleaned.slice(0, maxLength - 1)}…`;
+}
+
+function sanitizePolishedSegment(text) {
+  let cleaned = String(text || "")
+    .trim()
+    .replace(/^```(?:text|markdown|md)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .replace(/^["“”]+|["“”]+$/g, "")
+    .trim();
+
+  if (!cleaned) return "";
+
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[0]);
+      cleaned = String(parsed.polished || parsed.text || parsed.result || cleaned).trim();
+    } catch {
+      // Keep the raw text when the model returned prose that merely contains braces.
+    }
+  }
+
+  cleaned = cleaned
+    .split(/\n{2,}/)[0]
+    .replace(/^润色(?:后|版|结果)?[:：]\s*/i, "")
+    .replace(/^正文[:：]\s*/i, "")
+    .trim();
+
+  const explanationMarkers = [
+    "\n说明",
+    "\n理由",
+    "\n为什么",
+    "\n修改",
+    "\n评价",
+    "\n这段",
+    "\n这一段",
+    "\n注：",
+    "\n注:",
+    "这一段非常好",
+    "这段非常好",
+    "这一版",
+    "这个版本",
+    "这一段润色",
+    "这段润色",
+    "这段文字",
+    "这样润色",
+    "润色说明",
+    "修改说明",
+    "优化说明",
+    "因为这样",
+    "这样写"
+  ];
+
+  for (const marker of explanationMarkers) {
+    const index = cleaned.indexOf(marker);
+    if (index > 0) cleaned = cleaned.slice(0, index).trim();
+  }
+
+  return cleaned
+    .replace(/^[-*•]\s*/, "")
+    .replace(/^["“”]+|["“”]+$/g, "")
+    .trim();
 }
 
 async function generateJson({ instructions, input, fallback }) {

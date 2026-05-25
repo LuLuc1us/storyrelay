@@ -17,3 +17,5 @@ services:
         value: https://story-relay.onrender.com
       - key: OPENROUTER_API_KEY
         sync: false
+      - key: SUPABASE_ROOMS_TABLE
+        value: story_rooms

@@ -13,6 +13,7 @@ import {
   getRoomStoryText,
   polishSegment
 } from "./aiHost.js";
+import { getStorageStatusSnapshot, restoreRooms, saveRoom } from "./storage.js";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const publicDir = join(__dirname, "..", "public");
@@ -89,6 +90,11 @@ function broadcast(code) {
       removeStream(code, client);
     }
   }
+}
+
+async function saveAndBroadcast(room) {
+  await saveRoom(publicRoom(room));
+  broadcast(room.code);
 }
 
 function removeStream(code, client) {
@@ -221,6 +227,7 @@ async function handleApi(req, res) {
         rooms: rooms.size,
         streams: streamCount(),
         uptimeSeconds: Math.floor((Date.now() - startedAt) / 1000),
+        ...getStorageStatusSnapshot(),
         ...getAIStatusSnapshot()
       });
       return;
@@ -234,6 +241,7 @@ async function handleApi(req, res) {
     if (req.method === "POST" && req.url === "/api/rooms") {
       const body = await readJson(req);
       const result = createRoom(body);
+      await saveRoom(publicRoom(result.room));
       sendJson(res, 200, { room: publicRoom(result.room), player: result.player });
       return;
     }
@@ -254,7 +262,7 @@ async function handleApi(req, res) {
         turnOrder: room.players.length
       };
       room.players.push(player);
-      broadcast(code);
+      await saveAndBroadcast(room);
       sendJson(res, 200, { room: publicRoom(room), player });
       return;
     }
@@ -300,7 +308,7 @@ async function handleApi(req, res) {
         room.timeLimit = body.timeLimit || room.timeLimit;
         room.enableAIBridge = Boolean(body.enableAIBridge);
         room.enableAIEnding = Boolean(body.enableAIEnding);
-        broadcast(code);
+        await saveAndBroadcast(room);
         sendJson(res, 200, { room: publicRoom(room) });
         return;
       }
@@ -309,7 +317,7 @@ async function handleApi(req, res) {
         const player = room.players.find((item) => item.id === playerId);
         if (!player) return sendJson(res, 404, { error: "玩家不存在。" });
         player.ready = Boolean(body.ready);
-        broadcast(code);
+        await saveAndBroadcast(room);
         sendJson(res, 200, { room: publicRoom(room) });
         return;
       }
@@ -325,7 +333,7 @@ async function handleApi(req, res) {
           votes: []
         }));
         room.status = "selecting_opening";
-        broadcast(code);
+        await saveAndBroadcast(room);
         sendJson(res, 200, { room: publicRoom(room) });
         return;
       }
@@ -335,7 +343,7 @@ async function handleApi(req, res) {
         if (!option) return sendJson(res, 404, { error: "开头不存在。" });
         for (const item of room.openingOptions) item.votes = item.votes.filter((id) => id !== playerId);
         option.votes.push(playerId);
-        broadcast(code);
+        await saveAndBroadcast(room);
         sendJson(res, 200, { room: publicRoom(room) });
         return;
       }
@@ -357,7 +365,7 @@ async function handleApi(req, res) {
         room.currentRound = 1;
         room.currentTurnPlayerId = room.players[0].id;
         room.currentRequirement = await createRequirement(1, getRoomStoryText(room));
-        broadcast(code);
+        await saveAndBroadcast(room);
         sendJson(res, 200, { room: publicRoom(room) });
         return;
       }
@@ -378,7 +386,7 @@ async function handleApi(req, res) {
           room.currentRequirement = null;
         }
 
-        broadcast(code);
+        await saveAndBroadcast(room);
         sendJson(res, 200, { room: publicRoom(room) });
         return;
       }
@@ -404,7 +412,7 @@ async function handleApi(req, res) {
           requirement: room.currentRequirement
         });
         await advanceTurn(room);
-        broadcast(code);
+        await saveAndBroadcast(room);
         sendJson(res, 200, { room: publicRoom(room) });
         return;
       }
@@ -436,7 +444,7 @@ async function handleApi(req, res) {
           });
         }
         room.status = "finished";
-        broadcast(code);
+        await saveAndBroadcast(room);
         sendJson(res, 200, { room: publicRoom(room) });
         return;
       }
@@ -450,7 +458,7 @@ async function handleApi(req, res) {
         room.currentRound = room.playerTurnsCompleted + 1;
         room.currentTurnPlayerId = room.players[0].id;
         room.currentRequirement = await createRequirement(room.currentRound, getRoomStoryText(room));
-        broadcast(code);
+        await saveAndBroadcast(room);
         sendJson(res, 200, { room: publicRoom(room) });
         return;
       }
@@ -494,6 +502,7 @@ const server = createServer((req, res) => {
 
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1");
+await restoreRooms(rooms);
 server.listen(port, host, () => {
   console.log(`Story Relay is running at http://${host}:${port}`);
 });

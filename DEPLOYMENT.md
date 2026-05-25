@@ -50,6 +50,16 @@ OPENAI_API_KEY=你的 OpenAI API key
 OPENAI_MODEL=gpt-5.2
 ```
 
+如果要让房间和故事在服务重启后还保留，添加 Supabase：
+
+```text
+SUPABASE_URL=你的 Supabase Project URL
+SUPABASE_SERVICE_ROLE_KEY=你的 Supabase service_role key
+SUPABASE_ROOMS_TABLE=story_rooms
+```
+
+添加前先在 Supabase SQL Editor 运行仓库里的 `supabase/schema.sql`。`SUPABASE_SERVICE_ROLE_KEY` 是服务器密钥，只放在 Render Environment，不要提交到 GitHub。
+
 ## Render 部署
 
 ### 方式 A：用 `render.yaml`
@@ -127,6 +137,7 @@ docker run -p 3000:3000 \
 ```
 
 返回里的 `ai: true` 表示已经识别到真实 AI key；`provider` 会显示当前使用 `gemini`、`openrouter`、`openai` 或 `local`。
+`storage: "supabase"` 表示已经启用数据库保存；`storage: "memory"` 表示仍然只存在服务内存里。
 
 线上可玩时应类似：
 
