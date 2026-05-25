@@ -258,6 +258,9 @@ async function generateText({ instructions, input, fallback, maxOutputTokens = 3
   if (provider === "gemini") {
     return generateGeminiText({ instructions, input, fallback, maxOutputTokens });
   }
+  if (provider === "openrouter") {
+    return generateOpenRouterText({ instructions, input, fallback, maxOutputTokens });
+  }
   if (provider === "openai") {
     return generateOpenAIText({ instructions, input, fallback, maxOutputTokens });
   }
@@ -268,7 +271,9 @@ export function getAIProvider() {
   const requested = String(process.env.AI_PROVIDER || "").toLowerCase();
   if (requested === "local") return "local";
   if (requested === "gemini" && process.env.GEMINI_API_KEY) return "gemini";
+  if (requested === "openrouter" && process.env.OPENROUTER_API_KEY) return "openrouter";
   if (requested === "openai" && process.env.OPENAI_API_KEY) return "openai";
+  if (process.env.OPENROUTER_API_KEY) return "openrouter";
   if (process.env.GEMINI_API_KEY) return "gemini";
   if (process.env.OPENAI_API_KEY) return "openai";
   return "local";
@@ -277,6 +282,7 @@ export function getAIProvider() {
 export function getAIModelName() {
   const provider = getAIProvider();
   if (provider === "gemini") return process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  if (provider === "openrouter") return process.env.OPENROUTER_MODEL || "meta-llama/llama-3.2-3b-instruct:free";
   if (provider === "openai") return process.env.OPENAI_MODEL || "gpt-5.2";
   return "local-fallback";
 }
@@ -372,6 +378,47 @@ async function generateGeminiText({ instructions, input, fallback, maxOutputToke
   }
 }
 
+async function generateOpenRouterText({ instructions, input, fallback, maxOutputTokens }) {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  const model = process.env.OPENROUTER_MODEL || "meta-llama/llama-3.2-3b-instruct:free";
+  try {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": process.env.APP_PUBLIC_URL || "https://story-relay.onrender.com",
+        "X-Title": "Story Relay"
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: instructions },
+          { role: "user", content: input }
+        ],
+        max_tokens: maxOutputTokens,
+        temperature: 0.8
+      })
+    });
+
+    if (!response.ok) {
+      const message = await response.text();
+      recordAIError("openrouter", response.status, message);
+      console.warn(`OpenRouter request failed: ${response.status} ${message}`);
+      return fallback;
+    }
+
+    const data = await response.json();
+    const text = extractChatCompletionText(data);
+    if (text) lastAIError = null;
+    return text || fallback;
+  } catch (error) {
+    recordAIError("openrouter", "NETWORK", error.message);
+    console.warn(`OpenRouter request failed: ${error.message}`);
+    return fallback;
+  }
+}
+
 async function generateOpenAIText({ instructions, input, fallback, maxOutputTokens }) {
   const apiKey = process.env.OPENAI_API_KEY;
   try {
@@ -416,6 +463,10 @@ function extractGeminiText(data) {
     }
   }
   return chunks.join("\n").trim();
+}
+
+function extractChatCompletionText(data) {
+  return data?.choices?.[0]?.message?.content?.trim() || "";
 }
 
 function extractOutputText(data) {

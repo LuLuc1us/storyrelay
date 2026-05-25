@@ -47,7 +47,15 @@ node src/server.js
 
 没有 key 时会自动回退到本地占位逻辑，游戏仍然可玩。
 
-如果想切换到 OpenAI，也可以设置：
+如果想切换到 OpenRouter，也可以设置：
+
+```bash
+export AI_PROVIDER="openrouter"
+export OPENROUTER_API_KEY="你的 OpenRouter API key"
+export OPENROUTER_MODEL="meta-llama/llama-3.2-3b-instruct:free"
+```
+
+或者切换到 OpenAI：
 
 ```bash
 export AI_PROVIDER="openai"
@@ -72,7 +80,7 @@ export OPENAI_MODEL="gpt-5.2"
 - 生成系统结尾
 - 导出完整故事为 Markdown
 - `/api/health` 健康检查接口，方便线上部署平台检测服务状态
-- `/api/ai-check` AI 连接检查接口，用来确认 Gemini/OpenAI key 真的可调用
+- `/api/ai-check` AI 连接检查接口，用来确认 Gemini/OpenRouter/OpenAI key 真的可调用
 
 ## 文件结构
 

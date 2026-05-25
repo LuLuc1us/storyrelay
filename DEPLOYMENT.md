@@ -29,7 +29,16 @@ GEMINI_API_KEY=你的 Gemini API key
 GEMINI_MODEL=gemini-2.5-flash
 ```
 
-没有 `GEMINI_API_KEY` 或 `OPENAI_API_KEY` 时，游戏仍可运行，但 AI 主持人会使用本地占位逻辑。
+如果要尝试 OpenRouter 免费模型：
+
+```text
+AI_PROVIDER=openrouter
+OPENROUTER_API_KEY=你的 OpenRouter API key
+OPENROUTER_MODEL=meta-llama/llama-3.2-3b-instruct:free
+APP_PUBLIC_URL=https://你的 Render 地址
+```
+
+没有 `GEMINI_API_KEY`、`OPENROUTER_API_KEY` 或 `OPENAI_API_KEY` 时，游戏仍可运行，但 AI 主持人会使用本地占位逻辑。
 
 如果要使用 OpenAI：
 
@@ -114,7 +123,7 @@ docker run -p 3000:3000 \
 /api/health
 ```
 
-返回里的 `ai: true` 表示已经识别到真实 AI key；`provider` 会显示当前使用 `gemini`、`openai` 或 `local`。
+返回里的 `ai: true` 表示已经识别到真实 AI key；`provider` 会显示当前使用 `gemini`、`openrouter`、`openai` 或 `local`。
 
 线上可玩时应类似：
 
