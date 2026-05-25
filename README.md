@@ -52,8 +52,10 @@ node src/server.js
 ```bash
 export AI_PROVIDER="openrouter"
 export OPENROUTER_API_KEY="你的 OpenRouter API key"
-export OPENROUTER_MODEL="meta-llama/llama-3.2-3b-instruct:free"
+export OPENROUTER_MODEL="openrouter/free"
 ```
+
+`openrouter/free` 会让 OpenRouter 自动选择当前可用的免费模型。免费模型偶尔会被上游限流；服务端会自动尝试备用免费模型，并在失败时回退到本地占位逻辑，保证游戏流程不中断。
 
 或者切换到 OpenAI：
 

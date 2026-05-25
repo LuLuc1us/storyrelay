@@ -34,9 +34,11 @@ GEMINI_MODEL=gemini-2.5-flash
 ```text
 AI_PROVIDER=openrouter
 OPENROUTER_API_KEY=你的 OpenRouter API key
-OPENROUTER_MODEL=meta-llama/llama-3.2-3b-instruct:free
+OPENROUTER_MODEL=openrouter/free
 APP_PUBLIC_URL=https://你的 Render 地址
 ```
+
+`openrouter/free` 会自动选择当前可用的免费模型。免费模型可能遇到上游限流；本项目会自动尝试备用免费模型，仍失败时回退到本地占位逻辑。
 
 没有 `GEMINI_API_KEY`、`OPENROUTER_API_KEY` 或 `OPENAI_API_KEY` 时，游戏仍可运行，但 AI 主持人会使用本地占位逻辑。
 
@@ -61,10 +63,11 @@ startCommand: node src/server.js
 healthCheckPath: /api/health
 ```
 
-默认会使用本地 AI 占位逻辑：
+默认会启用 OpenRouter 免费模型路由器，但需要你在 Render 的 Environment 里填写 `OPENROUTER_API_KEY`：
 
 ```text
-AI_PROVIDER=local
+AI_PROVIDER=openrouter
+OPENROUTER_MODEL=openrouter/free
 ```
 
 ### 方式 B：手动创建 Web Service

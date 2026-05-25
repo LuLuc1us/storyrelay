@@ -11,6 +11,9 @@ import {
 
 let lastAIError = null;
 
+const OPENROUTER_DEFAULT_MODEL = "openrouter/free";
+const OPENROUTER_FALLBACK_MODELS = [OPENROUTER_DEFAULT_MODEL, "meta-llama/llama-3.2-3b-instruct:free"];
+
 export async function createOpeningOptions(count = 3) {
   return createOpeningOptionsWithAI(count);
 }
@@ -282,7 +285,7 @@ export function getAIProvider() {
 export function getAIModelName() {
   const provider = getAIProvider();
   if (provider === "gemini") return process.env.GEMINI_MODEL || "gemini-2.5-flash";
-  if (provider === "openrouter") return process.env.OPENROUTER_MODEL || "meta-llama/llama-3.2-3b-instruct:free";
+  if (provider === "openrouter") return process.env.OPENROUTER_MODEL || OPENROUTER_DEFAULT_MODEL;
   if (provider === "openai") return process.env.OPENAI_MODEL || "gpt-5.2";
   return "local-fallback";
 }
@@ -380,7 +383,23 @@ async function generateGeminiText({ instructions, input, fallback, maxOutputToke
 
 async function generateOpenRouterText({ instructions, input, fallback, maxOutputTokens }) {
   const apiKey = process.env.OPENROUTER_API_KEY;
-  const model = process.env.OPENROUTER_MODEL || "meta-llama/llama-3.2-3b-instruct:free";
+  const models = [
+    process.env.OPENROUTER_MODEL || OPENROUTER_DEFAULT_MODEL,
+    ...OPENROUTER_FALLBACK_MODELS
+  ].filter((model, index, all) => model && all.indexOf(model) === index);
+
+  for (const model of models) {
+    const text = await requestOpenRouterModel({ apiKey, model, instructions, input, maxOutputTokens });
+    if (text) {
+      lastAIError = null;
+      return text;
+    }
+  }
+
+  return fallback;
+}
+
+async function requestOpenRouterModel({ apiKey, model, instructions, input, maxOutputTokens }) {
   try {
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
@@ -403,19 +422,17 @@ async function generateOpenRouterText({ instructions, input, fallback, maxOutput
 
     if (!response.ok) {
       const message = await response.text();
-      recordAIError("openrouter", response.status, message);
-      console.warn(`OpenRouter request failed: ${response.status} ${message}`);
-      return fallback;
+      recordAIError("openrouter", response.status, `${model}: ${message}`);
+      console.warn(`OpenRouter request failed for ${model}: ${response.status} ${message}`);
+      return "";
     }
 
     const data = await response.json();
-    const text = extractChatCompletionText(data);
-    if (text) lastAIError = null;
-    return text || fallback;
+    return extractChatCompletionText(data);
   } catch (error) {
-    recordAIError("openrouter", "NETWORK", error.message);
-    console.warn(`OpenRouter request failed: ${error.message}`);
-    return fallback;
+    recordAIError("openrouter", "NETWORK", `${model}: ${error.message}`);
+    console.warn(`OpenRouter request failed for ${model}: ${error.message}`);
+    return "";
   }
 }
 
