@@ -10,7 +10,8 @@ const state = {
   error: "",
   draft: "",
   polish: null,
-  isPolishing: false
+  isPolishing: false,
+  pendingAction: ""
 };
 
 const styleOptions = [
@@ -67,6 +68,20 @@ function clearSavedRoom() {
 function setError(message) {
   state.error = message || "";
   render();
+}
+
+function setFormBusy(form, busy, label = "处理中…") {
+  const buttons = form.querySelectorAll("button");
+  buttons.forEach((button) => {
+    if (busy) {
+      button.dataset.idleText = button.textContent;
+      button.textContent = label;
+    } else if (button.dataset.idleText) {
+      button.textContent = button.dataset.idleText;
+      delete button.dataset.idleText;
+    }
+    button.disabled = busy;
+  });
 }
 
 function connect(code) {
@@ -249,7 +264,10 @@ function renderHome() {
 
   document.querySelector("#createForm").addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (state.pendingAction) return;
     const form = new FormData(event.currentTarget);
+    state.pendingAction = "create";
+    setFormBusy(event.currentTarget, true, "创建中…");
     try {
       const { room, player } = await api.post("/api/rooms", {
         name: form.get("name"),
@@ -268,12 +286,18 @@ function renderHome() {
       setError("");
     } catch (error) {
       setError(error.message);
+    } finally {
+      state.pendingAction = "";
+      if (!state.room) setFormBusy(event.currentTarget, false);
     }
   });
 
   document.querySelector("#joinForm").addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (state.pendingAction) return;
     const form = new FormData(event.currentTarget);
+    state.pendingAction = "join";
+    setFormBusy(event.currentTarget, true, "加入中…");
     try {
       const { room, player } = await api.post("/api/join", {
         name: form.get("name"),
@@ -286,6 +310,9 @@ function renderHome() {
       setError("");
     } catch (error) {
       setError(error.message);
+    } finally {
+      state.pendingAction = "";
+      if (!state.room) setFormBusy(event.currentTarget, false);
     }
   });
 }
@@ -405,6 +432,8 @@ function renderLobby() {
                 <button id="readyToggle">${state.player?.ready ? "取消准备" : "准备"}</button>
               `
           }
+        </div>
+        <div class="panel stack wide-panel">
           ${renderStyleVote()}
           ${renderEventLog(6)}
         </div>

@@ -217,6 +217,10 @@ label {
   line-height: 1.25;
 }
 
+.wide-panel {
+  grid-column: 1 / -1;
+}
+
 .stack {
   display: grid;
   gap: 15px;
