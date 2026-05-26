@@ -127,9 +127,14 @@ label {
 
 .game-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 370px;
-  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) minmax(390px, 430px);
+  gap: 22px;
   align-items: start;
+}
+
+.game-grid > aside {
+  position: sticky;
+  top: 18px;
 }
 
 .reader-layout {
@@ -257,15 +262,64 @@ label {
 
 .requirement {
   display: grid;
-  gap: 8px;
-  padding: 13px;
+  gap: 7px;
+  padding: 12px;
   border-radius: 8px;
   background: #f7f3ee;
   border: 1px solid var(--line);
+  line-height: 1.55;
 }
 
 .requirement strong {
   color: var(--accent-2);
+}
+
+.turn-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.turn-head h3,
+.turn-player {
+  margin: 0;
+}
+
+.action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.action-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid #dccfba;
+  border-radius: 8px;
+  background: #fbf7ef;
+  padding: 10px;
+}
+
+.action-strip > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.action-strip .muted {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.action-strip button {
+  min-height: 34px;
+  padding: 0 12px;
+  flex: 0 0 auto;
 }
 
 .assist-box {
@@ -353,8 +407,13 @@ label {
   .grid,
   .game-grid,
   .reader-layout,
+  .action-grid,
   .split {
     grid-template-columns: 1fr;
+  }
+
+  .game-grid > aside {
+    position: static;
   }
 
   .resume-card {

@@ -549,15 +549,13 @@ function renderRequirementRerollVote(room) {
   const names = votes.map(playerName).join("、");
 
   return `
-    <div class="vote-box stack">
-      <div class="row">
-        <strong>换题投票</strong>
-        <span class="pill">${votes.length} / ${needed}</span>
+    <div class="action-strip">
+      <div>
+        <strong>换题</strong>
+        <span class="muted">${votes.length}/${needed}${names ? ` · ${escapeHtml(names)}` : ""}</span>
       </div>
-      <p class="muted">觉得本轮关键词或转折太别扭，可以投票换一组写作要求。超过半数同意后立即更新。</p>
-      ${names ? `<p class="muted">已投票：${escapeHtml(names)}</p>` : ""}
       <button id="requirementVote" class="${hasVoted ? "secondary" : "warning"}" type="button">
-        ${hasVoted ? "撤回换题投票" : "投票换题"}
+        ${hasVoted ? "撤回" : "投票"}
       </button>
     </div>
   `;
@@ -570,19 +568,13 @@ function renderEndingVote(room) {
   const names = votes.map(playerName).join("、");
 
   return `
-    <div class="vote-box stack">
-      <div class="row">
-        <strong>结尾投票</strong>
-        <span class="pill">${votes.length} / ${needed}</span>
+    <div class="action-strip">
+      <div>
+        <strong>结尾</strong>
+        <span class="muted">${votes.length}/${needed}${names ? ` · ${escapeHtml(names)}` : ""}</span>
       </div>
-      <p class="muted">${
-        votes.length >= needed
-          ? "已达成收束共识，准备进入结尾。"
-          : "觉得故事差不多了，可以投票进入结尾。超过半数同意后收束故事。"
-      }</p>
-      ${names ? `<p class="muted">已投票：${escapeHtml(names)}</p>` : ""}
       <button id="endingVote" class="${hasVoted ? "secondary" : "warning"}" type="button">
-        ${hasVoted ? "撤回结束投票" : "投票进入结尾"}
+        ${hasVoted ? "撤回" : "投票"}
       </button>
     </div>
   `;
@@ -681,14 +673,19 @@ function renderPlaying() {
         ${renderStory()}
       </div>
       <aside class="panel stack">
-        <h3>当前回合</h3>
-        <p>轮到：<strong>${escapeHtml(playerName(room.currentTurnPlayerId))}</strong></p>
+        <div class="turn-head">
+          <h3>当前回合</h3>
+          <span class="pill">第 ${room.currentRound} / ${room.maxRounds} 轮</span>
+        </div>
+        <p class="turn-player">轮到：<strong>${escapeHtml(playerName(room.currentTurnPlayerId))}</strong></p>
         <div class="row">
           ${room.players.map((player) => `<span class="pill">${escapeHtml(player.name)}</span>`).join("")}
         </div>
         ${renderRequirement()}
-        ${renderRequirementRerollVote(room)}
-        ${renderEndingVote(room)}
+        <div class="action-grid">
+          ${renderRequirementRerollVote(room)}
+          ${renderEndingVote(room)}
+        </div>
         ${
           isCurrentPlayer()
             ? `
