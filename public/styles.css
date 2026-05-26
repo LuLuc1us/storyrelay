@@ -320,6 +320,19 @@ label {
   white-space: pre-wrap;
 }
 
+.segment-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.segment-tools button {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
 .requirement {
   display: grid;
   gap: 8px;

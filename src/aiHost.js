@@ -206,12 +206,18 @@ function requirementFitsStory(requirement, storyText = "", storyStyle = "suspens
   return true;
 }
 
-export async function createBridgeSegmentResult(storyText = "", storyStyle = "suspense") {
+function toneInstruction(tone = "balanced") {
+  if (tone === "restrained") return "语气更克制，少用形容词，像清楚的叙事推进。";
+  if (tone === "dramatic") return "可以更有戏剧张力，但仍然要具体，不要堆抽象比喻。";
+  return "语气自然，既要有悬念，也要清楚可接。";
+}
+
+export async function createBridgeSegmentResult(storyText = "", storyStyle = "suspense", tone = "balanced") {
   const style = getStyleProfile(storyStyle);
   const fallback = createLocalBridgeFallback(storyText, storyStyle);
   const bridge = await generateText({
     instructions:
-      `你是故事接龙游戏主持人。当前风格：${style.label}，${style.prompt}。请用简体中文写一段过渡段，帮助玩家故事更连贯。要求：只接住最近2段的具体线索；少用抽象比喻；不要堆砌“无形、命运、世界、真相”等大词；不要结束故事，不要否定玩家设定，不要抢走主角行动权。禁止输出英文。`,
+      `你是故事接龙游戏主持人。当前风格：${style.label}，${style.prompt}。请用简体中文写一段过渡段，帮助玩家故事更连贯。${toneInstruction(tone)}要求：只接住最近2段的具体线索；少用抽象比喻；不要堆砌“无形、命运、世界、真相”等大词；不要结束故事，不要否定玩家设定，不要抢走主角行动权。禁止输出英文。`,
     input: `当前完整故事：\n${storyText}\n\n请写 70 到 130 个中文字的系统中间段。只输出中文段落正文，不要解释。`,
     fallback,
     maxOutputTokens: 170
@@ -228,12 +234,12 @@ export async function createBridgeSegment(storyText = "", storyStyle = "suspense
   return (await createBridgeSegmentResult(storyText, storyStyle)).text;
 }
 
-export async function createEndingSegmentResult(storyText = "", storyStyle = "suspense") {
+export async function createEndingSegmentResult(storyText = "", storyStyle = "suspense", tone = "balanced") {
   const style = getStyleProfile(storyStyle);
   const fallback = createLocalEndingFallback(storyText, storyStyle);
   const ending = await generateText({
     instructions:
-      `你是故事接龙游戏主持人。当前风格：${style.label}，${style.prompt}。请根据完整故事写一个有余味的简体中文结尾。不要解释太多，保留一点开放感。禁止输出英文。`,
+      `你是故事接龙游戏主持人。当前风格：${style.label}，${style.prompt}。请根据完整故事写一个有余味的简体中文结尾。${toneInstruction(tone)}不要解释太多，保留一点开放感。禁止输出英文。`,
     input: `完整故事：\n${storyText}\n\n请写 150 到 250 个中文字的最终结尾。只输出中文结尾正文，不要解释。`,
     fallback,
     maxOutputTokens: 360

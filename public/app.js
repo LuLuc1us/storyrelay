@@ -661,6 +661,7 @@ function renderOpeningSelection() {
 }
 
 function renderStory() {
+  const canRewriteSystem = isHost() && !state.storyViewCode;
   return `
     <div class="story">
       <div class="opening">${escapeHtml(state.room.story.openingText || "故事还没有开始。")}</div>
@@ -673,12 +674,41 @@ function renderStory() {
                 <span>第 ${segment.roundNumber || "-"} 轮</span>
               </div>
               <p>${escapeHtml(segment.text)}</p>
+              ${
+                canRewriteSystem && segment.authorType === "system"
+                  ? `
+                    <div class="segment-tools">
+                      <button class="secondary" data-rewrite-segment="${segment.id}" data-tone="balanced" type="button">重写</button>
+                      <button class="secondary" data-rewrite-segment="${segment.id}" data-tone="restrained" type="button">更克制</button>
+                      <button class="secondary" data-rewrite-segment="${segment.id}" data-tone="dramatic" type="button">更戏剧</button>
+                    </div>
+                  `
+                  : ""
+              }
             </article>
           `
         )
         .join("")}
     </div>
   `;
+}
+
+function bindSystemSegmentActions() {
+  document.querySelectorAll("[data-rewrite-segment]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      await withButtonPending(button, "重写中…", async () => {
+        try {
+          await api.post(`/api/rooms/${state.room.code}/rewrite-system-segment`, actionBody({
+            segmentId: button.dataset.rewriteSegment,
+            tone: button.dataset.tone
+          }));
+          setError("");
+        } catch (error) {
+          setError(error.message);
+        }
+      });
+    });
+  });
 }
 
 function renderStoryView() {
@@ -976,6 +1006,8 @@ function renderPlaying() {
       });
     });
   }
+
+  bindSystemSegmentActions();
 }
 
 function renderEnding() {
@@ -1017,6 +1049,8 @@ function renderEnding() {
       }
     });
   });
+
+  bindSystemSegmentActions();
 
   document.querySelector("#continueRound")?.addEventListener("click", async (event) => {
     await withButtonPending(event.currentTarget, "继续中…", async () => {

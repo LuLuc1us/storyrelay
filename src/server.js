@@ -135,6 +135,15 @@ function addRoomEvent(room, type, message, playerId = null) {
   ].slice(-60);
 }
 
+function getStoryTextBeforeSegment(room, segmentId) {
+  const lines = [room.story.openingText].filter(Boolean);
+  for (const segment of room.story.segments) {
+    if (segment.id === segmentId) break;
+    lines.push(segment.text);
+  }
+  return lines.join("\n");
+}
+
 function playerLabel(room, playerId) {
   return room.players.find((player) => player.id === playerId)?.name || "未知玩家";
 }
@@ -589,6 +598,35 @@ async function handleApi(req, res) {
         room.status = "finished";
         room.requirementRerollVotes = [];
         addRoomEvent(room, "story", "系统生成了最终结尾，故事完成。", playerId);
+        await saveAndBroadcast(room);
+        sendJson(res, 200, { room: publicRoom(room) });
+        return;
+      }
+
+      if (req.method === "POST" && action === "rewrite-system-segment") {
+        if (playerId !== room.hostId) return sendJson(res, 403, { error: "只有房主可以重写系统段落。" });
+        if (!["playing", "ending", "finished"].includes(room.status)) {
+          return sendJson(res, 409, { error: "当前不能重写系统段落。" });
+        }
+
+        const segment = room.story.segments.find((item) => item.id === body.segmentId);
+        if (!segment) return sendJson(res, 404, { error: "没有找到这段系统段落。" });
+        if (segment.authorType !== "system") return sendJson(res, 400, { error: "只能重写系统段落。" });
+
+        const tone = ["balanced", "restrained", "dramatic"].includes(body.tone) ? body.tone : "balanced";
+        const contextText = getStoryTextBeforeSegment(room, segment.id);
+        const isEndingSegment = room.status === "finished" && room.story.segments.at(-1)?.id === segment.id;
+        const result = isEndingSegment
+          ? await createEndingSegmentResult(contextText, room.storyStyle, tone)
+          : await createBridgeSegmentResult(contextText, room.storyStyle, tone);
+
+        segment.text = result.text;
+        segment.authorName = result.sourceLabel;
+        segment.sourceLabel = result.sourceLabel;
+        segment.rewriteCount = Number(segment.rewriteCount || 0) + 1;
+        segment.updatedAt = now();
+
+        addRoomEvent(room, "system", `${result.sourceLabel}重写了一段系统内容。`, playerId);
         await saveAndBroadcast(room);
         sendJson(res, 200, { room: publicRoom(room) });
         return;
