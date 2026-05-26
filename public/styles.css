@@ -329,20 +329,6 @@ label {
   padding: 13px;
 }
 
-.host-controls {
-  display: grid;
-  gap: 10px;
-  border: 1px solid #c8d8d3;
-  border-radius: 8px;
-  background: #f3f8f6;
-  padding: 12px;
-}
-
-.host-controls p {
-  margin: 4px 0 0;
-  line-height: 1.55;
-}
-
 .event-log {
   display: grid;
   gap: 10px;
@@ -371,6 +357,47 @@ label {
 .event-log time {
   color: #958d82;
   font-size: 12px;
+}
+
+.style-vote {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #dccfba;
+  border-radius: 8px;
+  background: #fbf7ef;
+  padding: 12px;
+}
+
+.style-vote h3 {
+  margin: 0;
+}
+
+.style-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.style-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  padding: 0 12px;
+}
+
+.style-option.selected {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.style-option small {
+  color: var(--muted);
+  white-space: nowrap;
 }
 
 .vote-box {
@@ -452,6 +479,7 @@ label {
   .game-grid,
   .reader-layout,
   .action-grid,
+  .style-grid,
   .split {
     grid-template-columns: 1fr;
   }

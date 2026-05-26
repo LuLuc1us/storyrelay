@@ -223,11 +223,6 @@ function renderHome() {
             <option value="5">5 分钟</option>
           </select>
         </label>
-        <label>故事风格
-          <select name="storyStyle">
-            ${styleOptions.map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}
-          </select>
-        </label>
         <label class="row"><input name="enableAIBridge" type="checkbox" checked /> 启用系统中间段</label>
         <label class="row"><input name="enableAIEnding" type="checkbox" checked /> 启用系统结尾</label>
         <button type="submit">创建房间</button>
@@ -261,7 +256,6 @@ function renderHome() {
           wordLimit: Number(form.get("wordLimit")),
           maxRounds: Number(form.get("maxRounds")),
           timeLimit: form.get("timeLimit"),
-          storyStyle: form.get("storyStyle"),
           enableAIBridge: form.has("enableAIBridge"),
           enableAIEnding: form.has("enableAIEnding")
         }
@@ -337,6 +331,33 @@ function renderEventLog(limit = 8) {
   `;
 }
 
+function renderStyleVote() {
+  const votes = state.room.styleVotes || {};
+  const votedStyle = styleOptions.find(([value]) => (votes[value] || []).includes(state.player?.id))?.[0];
+  return `
+    <div class="style-vote">
+      <div class="row">
+        <h3>投票选择故事风格</h3>
+        <span class="pill">当前：${storyStyleLabel(state.room.storyStyle)}</span>
+      </div>
+      <div class="style-grid">
+        ${styleOptions
+          .map(([value, label]) => {
+            const count = (votes[value] || []).length;
+            const selected = votedStyle === value;
+            return `
+              <button class="style-option ${selected ? "selected" : ""}" data-style="${value}" type="button">
+                <span>${label}</span>
+                <small>${count} 票</small>
+              </button>
+            `;
+          })
+          .join("")}
+      </div>
+    </div>
+  `;
+}
+
 function renderLobby() {
   const room = state.room;
   layout(
@@ -372,13 +393,6 @@ function renderLobby() {
                     <option value="5" ${room.timeLimit === "5" ? "selected" : ""}>5 分钟</option>
                   </select>
                 </label>
-                <label>故事风格
-                  <select id="storyStyle">
-                    ${styleOptions
-                      .map(([value, label]) => `<option value="${value}" ${(room.storyStyle || "suspense") === value ? "selected" : ""}>${label}</option>`)
-                      .join("")}
-                  </select>
-                </label>
                 <label class="row"><input id="enableAIBridge" type="checkbox" ${room.enableAIBridge ? "checked" : ""} /> 启用系统中间段</label>
                 <label class="row"><input id="enableAIEnding" type="checkbox" ${room.enableAIEnding ? "checked" : ""} /> 启用系统结尾</label>
                 <button id="saveSettings" class="secondary">保存设置</button>
@@ -390,6 +404,7 @@ function renderLobby() {
                 <button id="readyToggle">${state.player?.ready ? "取消准备" : "准备"}</button>
               `
           }
+          ${renderStyleVote()}
           ${renderEventLog(6)}
         </div>
       </section>
@@ -403,6 +418,17 @@ function renderLobby() {
     setError("");
   });
 
+  document.querySelectorAll("[data-style]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      try {
+        await api.post(`/api/rooms/${room.code}/vote-style`, actionBody({ storyStyle: button.dataset.style }));
+        setError("");
+      } catch (error) {
+        setError(error.message);
+      }
+    });
+  });
+
   if (isHost()) {
     document.querySelector("#saveSettings").addEventListener("click", async () => {
       try {
@@ -410,7 +436,6 @@ function renderLobby() {
           wordLimit: Number(document.querySelector("#wordLimit").value),
           maxRounds: Number(document.querySelector("#maxRounds").value),
           timeLimit: document.querySelector("#timeLimit").value,
-          storyStyle: document.querySelector("#storyStyle").value,
           enableAIBridge: document.querySelector("#enableAIBridge").checked,
           enableAIEnding: document.querySelector("#enableAIEnding").checked
         }));
@@ -632,19 +657,6 @@ function renderEndingVote(room) {
   `;
 }
 
-function renderHostControls(room) {
-  if (!isHost() || room.status !== "playing") return "";
-  return `
-    <div class="host-controls">
-      <div>
-        <strong>房主控制</strong>
-        <p class="muted">节奏开始跑偏时，可以提前进入结尾阶段。</p>
-      </div>
-      <button id="forceEnding" class="secondary" type="button">提前收束</button>
-    </div>
-  `;
-}
-
 function renderPolishPanel() {
   if (state.isPolishing) {
     return `<div class="assist-box muted">AI 主持人正在整理语句……</div>`;
@@ -751,7 +763,6 @@ function renderPlaying() {
           ${renderRequirementRerollVote(room)}
           ${renderEndingVote(room)}
         </div>
-        ${renderHostControls(room)}
         ${
           isCurrentPlayer()
             ? `
@@ -831,15 +842,6 @@ function renderPlaying() {
       }
     });
   }
-
-  document.querySelector("#forceEnding")?.addEventListener("click", async () => {
-    try {
-      await api.post(`/api/rooms/${room.code}/force-ending`, actionBody());
-      setError("");
-    } catch (error) {
-      setError(error.message);
-    }
-  });
 }
 
 function renderEnding() {

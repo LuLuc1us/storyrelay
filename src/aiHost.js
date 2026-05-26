@@ -6,6 +6,7 @@ import {
   naturalKeywordPool,
   openingPool,
   sample,
+  styleOpeningPools,
   styleProfiles,
   takeRandom,
   twistPool
@@ -100,7 +101,7 @@ export async function createEndingSegment(storyText = "", storyStyle = "suspense
 
 async function createOpeningOptionsWithAI(count, storyStyle = "suspense") {
   const style = getStyleProfile(storyStyle);
-  const fallbackOptions = takeRandom(openingPool, count);
+  const fallbackOptions = takeRandom(styleOpeningPools[storyStyle] || openingPool, count);
   const text = await generateText({
     instructions:
       `你是故事接龙游戏主持人。当前风格：${style.label}，${style.prompt}。请生成简体中文故事开头，适合多人继续创作。每个开头必须是具体场景陈述句，有清楚的人、地点、物件或事件。不要写成谜语、宣传语、问题、设定简介或“一个……的……”模板。禁止输出英文、拼音和任何拉丁字母。`,
@@ -320,10 +321,17 @@ function isVagueOpening(text) {
     /^某人/,
     /^传说有/,
     /^古老的[^，。！？]{0,12}中，传说/,
+    /^身在/,
     /whoever/i,
     /遇到谜题/,
     /等待着某人的发现/,
-    /失落的宝藏/
+    /失落的宝藏/,
+    /未解的气息/,
+    /陈旧的钟声/,
+    /吊尺/,
+    /指尖留下一道细线/,
+    /一个角落/,
+    /偏远村落的房屋窗户/
   ].some((pattern) => pattern.test(text));
 }
 

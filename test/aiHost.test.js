@@ -20,6 +20,8 @@ test("rejects English story openings", () => {
 test("rejects vague riddle-like opening templates", () => {
   assert.equal(isVagueOpening("一个阴云密布的夜晚，隐藏着某人的秘密。"), true);
   assert.equal(isVagueOpening("古老的森林中，传说有一间失落的宝藏。"), true);
+  assert.equal(isVagueOpening("身在老街上的一个角落，空气中竟有一丝未解的气息。"), true);
+  assert.equal(isVagueOpening("清晨的吊尺在楼里摇摇晃晃，指尖留下一道细线。"), true);
   assert.equal(isValidChineseOpening("停电后的第十分钟，楼道里的感应灯自己亮了起来。"), true);
 });
 

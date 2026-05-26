@@ -65,6 +65,7 @@ function publicRoom(room) {
     openingRerollVotes: [],
     requirementRerollVotes: [],
     storyStyle: "suspense",
+    styleVotes: {},
     events: [],
     ...room,
     clients: undefined
@@ -235,6 +236,7 @@ function createRoom({ name, settings }) {
     enableAIBridge: settings?.enableAIBridge !== false,
     enableAIEnding: settings?.enableAIEnding !== false,
     storyStyle: settings?.storyStyle || "suspense",
+    styleVotes: {},
     openingOptions: [],
     selectedOpeningId: null,
     openingRerollVotes: [],
@@ -273,6 +275,13 @@ async function refreshOpeningOptions(room) {
 
 function neededVotes(room) {
   return Math.floor(room.players.length / 2) + 1;
+}
+
+function resolveStoryStyle(room) {
+  const entries = Object.entries(room.styleVotes || {});
+  if (!entries.length) return room.storyStyle || "suspense";
+  const [winningStyle] = entries.sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))[0];
+  return winningStyle || room.storyStyle || "suspense";
 }
 
 async function handleApi(req, res) {
@@ -373,8 +382,28 @@ async function handleApi(req, res) {
         room.timeLimit = body.timeLimit || room.timeLimit;
         room.enableAIBridge = Boolean(body.enableAIBridge);
         room.enableAIEnding = Boolean(body.enableAIEnding);
-        room.storyStyle = body.storyStyle || room.storyStyle || "suspense";
         addRoomEvent(room, "room", `${playerLabel(room, playerId)} 更新了本局设置。`, playerId);
+        await saveAndBroadcast(room);
+        sendJson(res, 200, { room: publicRoom(room) });
+        return;
+      }
+
+      if (req.method === "POST" && action === "vote-style") {
+        if (room.status !== "lobby") return sendJson(res, 409, { error: "游戏开始后不能修改风格投票。" });
+        if (!room.players.some((player) => player.id === playerId)) {
+          return sendJson(res, 404, { error: "玩家不存在。" });
+        }
+        const style = String(body.storyStyle || "").trim();
+        const allowedStyles = new Set(["suspense", "fantasy", "warm", "absurd", "sciFi"]);
+        if (!allowedStyles.has(style)) return sendJson(res, 400, { error: "这个故事风格不存在。" });
+
+        room.styleVotes = room.styleVotes || {};
+        for (const key of Object.keys(room.styleVotes)) {
+          room.styleVotes[key] = room.styleVotes[key].filter((id) => id !== playerId);
+        }
+        room.styleVotes[style] = [...(room.styleVotes[style] || []), playerId];
+        room.storyStyle = resolveStoryStyle(room);
+        addRoomEvent(room, "vote", `${playerLabel(room, playerId)} 投票选择了故事风格。`, playerId);
         await saveAndBroadcast(room);
         sendJson(res, 200, { room: publicRoom(room) });
         return;
@@ -393,6 +422,7 @@ async function handleApi(req, res) {
       if (req.method === "POST" && action === "start") {
         if (playerId !== room.hostId) return sendJson(res, 403, { error: "只有房主可以开始游戏。" });
         if (room.players.length < 2) return sendJson(res, 409, { error: "至少需要2名玩家。" });
+        room.storyStyle = resolveStoryStyle(room);
         await refreshOpeningOptions(room);
         room.status = "selecting_opening";
         addRoomEvent(room, "room", "游戏开始，进入故事开头选择。", playerId);
@@ -555,20 +585,6 @@ async function handleApi(req, res) {
         room.status = "finished";
         room.requirementRerollVotes = [];
         addRoomEvent(room, "story", "系统生成了最终结尾，故事完成。", playerId);
-        await saveAndBroadcast(room);
-        sendJson(res, 200, { room: publicRoom(room) });
-        return;
-      }
-
-      if (req.method === "POST" && action === "force-ending") {
-        if (playerId !== room.hostId) return sendJson(res, 403, { error: "只有房主可以提前收束故事。" });
-        if (room.status !== "playing") return sendJson(res, 409, { error: "当前不能提前收束。" });
-        room.status = "ending";
-        room.currentTurnPlayerId = null;
-        room.currentRequirement = null;
-        room.requirementRerollVotes = [];
-        room.endVotes = [];
-        addRoomEvent(room, "room", "房主提前将故事带入结尾阶段。", playerId);
         await saveAndBroadcast(room);
         sendJson(res, 200, { room: publicRoom(room) });
         return;
