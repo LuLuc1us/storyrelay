@@ -63,6 +63,7 @@ function loadEnvFile(path) {
 function publicRoom(room) {
   return {
     openingRerollVotes: [],
+    requirementRerollVotes: [],
     ...room,
     clients: undefined
   };
@@ -141,6 +142,7 @@ async function advanceTurn(room) {
     room.status = "ending";
     room.currentTurnPlayerId = null;
     room.currentRequirement = null;
+    room.requirementRerollVotes = [];
     return;
   }
 
@@ -148,6 +150,7 @@ async function advanceTurn(room) {
   room.currentRound = room.playerTurnsCompleted + 1;
   room.currentTurnPlayerId = room.players[room.turnIndex].id;
   room.currentRequirement = await createRequirement(room.currentRound, getRoomStoryText(room));
+  room.requirementRerollVotes = [];
 }
 
 function exportMarkdown(room) {
@@ -204,6 +207,7 @@ function createRoom({ name, settings }) {
     selectedOpeningId: null,
     openingRerollVotes: [],
     currentRequirement: null,
+    requirementRerollVotes: [],
     endVotes: [],
     turnIndex: 0,
     playerTurnsCompleted: 0,
@@ -401,6 +405,7 @@ async function handleApi(req, res) {
         room.playerTurnsCompleted = 0;
         room.endVotes = [];
         room.openingRerollVotes = [];
+        room.requirementRerollVotes = [];
         room.currentRound = 1;
         room.currentTurnPlayerId = room.players[0].id;
         room.currentRequirement = await createRequirement(1, getRoomStoryText(room));
@@ -422,6 +427,7 @@ async function handleApi(req, res) {
           room.status = "ending";
           room.currentTurnPlayerId = null;
           room.currentRequirement = null;
+          room.requirementRerollVotes = [];
         }
 
         await saveAndBroadcast(room);
@@ -455,6 +461,25 @@ async function handleApi(req, res) {
         return;
       }
 
+      if (req.method === "POST" && action === "reroll-requirement") {
+        if (room.status !== "playing") return sendJson(res, 409, { error: "当前不能重抽写作要求。" });
+        if (!room.players.some((player) => player.id === playerId)) {
+          return sendJson(res, 404, { error: "玩家不存在。" });
+        }
+
+        room.requirementRerollVotes = (room.requirementRerollVotes || []).filter((id) => id !== playerId);
+        if (body.vote !== false) room.requirementRerollVotes.push(playerId);
+
+        if (room.requirementRerollVotes.length >= neededVotes(room)) {
+          room.currentRequirement = await createRequirement(room.currentRound, getRoomStoryText(room));
+          room.requirementRerollVotes = [];
+        }
+
+        await saveAndBroadcast(room);
+        sendJson(res, 200, { room: publicRoom(room) });
+        return;
+      }
+
       if (req.method === "POST" && action === "polish-segment") {
         if (room.status !== "playing") return sendJson(res, 409, { error: "当前不能润色段落。" });
         if (playerId !== room.currentTurnPlayerId) return sendJson(res, 403, { error: "还没有轮到你。" });
@@ -482,6 +507,7 @@ async function handleApi(req, res) {
           });
         }
         room.status = "finished";
+        room.requirementRerollVotes = [];
         await saveAndBroadcast(room);
         sendJson(res, 200, { room: publicRoom(room) });
         return;
@@ -492,6 +518,7 @@ async function handleApi(req, res) {
         room.maxRounds += room.players.length;
         room.status = "playing";
         room.endVotes = [];
+        room.requirementRerollVotes = [];
         room.turnIndex = 0;
         room.currentRound = room.playerTurnsCompleted + 1;
         room.currentTurnPlayerId = room.players[0].id;

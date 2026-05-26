@@ -542,6 +542,27 @@ function renderRequirement() {
   `;
 }
 
+function renderRequirementRerollVote(room) {
+  const votes = room.requirementRerollVotes || [];
+  const needed = Math.floor(room.players.length / 2) + 1;
+  const hasVoted = votes.includes(state.player?.id);
+  const names = votes.map(playerName).join("、");
+
+  return `
+    <div class="vote-box stack">
+      <div class="row">
+        <strong>换题投票</strong>
+        <span class="pill">${votes.length} / ${needed}</span>
+      </div>
+      <p class="muted">觉得本轮关键词或转折太别扭，可以投票换一组写作要求。超过半数同意后立即更新。</p>
+      ${names ? `<p class="muted">已投票：${escapeHtml(names)}</p>` : ""}
+      <button id="requirementVote" class="${hasVoted ? "secondary" : "warning"}" type="button">
+        ${hasVoted ? "撤回换题投票" : "投票换题"}
+      </button>
+    </div>
+  `;
+}
+
 function renderEndingVote(room) {
   const votes = room.endVotes || [];
   const needed = Math.floor(room.players.length / 2) + 1;
@@ -666,6 +687,7 @@ function renderPlaying() {
           ${room.players.map((player) => `<span class="pill">${escapeHtml(player.name)}</span>`).join("")}
         </div>
         ${renderRequirement()}
+        ${renderRequirementRerollVote(room)}
         ${renderEndingVote(room)}
         ${
           isCurrentPlayer()
@@ -704,6 +726,16 @@ function renderPlaying() {
         setError(error.message);
       }
     });
+    document.querySelector("#requirementVote")?.addEventListener("click", async () => {
+      try {
+        const hasVoted = (room.requirementRerollVotes || []).includes(state.player?.id);
+        await api.post(`/api/rooms/${room.code}/reroll-requirement`, actionBody({ vote: !hasVoted }));
+        state.polish = null;
+        setError("");
+      } catch (error) {
+        setError(error.message);
+      }
+    });
     document.querySelector("#submitSegment").addEventListener("click", async () => {
       try {
         await api.post(`/api/rooms/${room.code}/submit-segment`, actionBody({ text: state.draft }));
@@ -720,6 +752,15 @@ function renderPlaying() {
       try {
         const hasVoted = (room.endVotes || []).includes(state.player?.id);
         await api.post(`/api/rooms/${room.code}/vote-ending`, actionBody({ vote: !hasVoted }));
+        setError("");
+      } catch (error) {
+        setError(error.message);
+      }
+    });
+    document.querySelector("#requirementVote")?.addEventListener("click", async () => {
+      try {
+        const hasVoted = (room.requirementRerollVotes || []).includes(state.player?.id);
+        await api.post(`/api/rooms/${room.code}/reroll-requirement`, actionBody({ vote: !hasVoted }));
         setError("");
       } catch (error) {
         setError(error.message);
