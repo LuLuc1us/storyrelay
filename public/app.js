@@ -166,8 +166,9 @@ function layout(content, toolbar = "") {
     <div class="shell">
       <header class="topbar">
         <div class="brand">
+          <span class="brand-mark">Story Relay</span>
           <h1>故事接龙工坊</h1>
-          <span>Story Relay · 多人轮流写作游戏</span>
+          <span>多人轮流写作游戏 · 投票开局 · AI 主持</span>
         </div>
         <div class="toolbar">${toolbar}</div>
       </header>
