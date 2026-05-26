@@ -64,6 +64,8 @@ function publicRoom(room) {
   return {
     openingRerollVotes: [],
     requirementRerollVotes: [],
+    storyStyle: "suspense",
+    events: [],
     ...room,
     clients: undefined
   };
@@ -119,6 +121,34 @@ function addSegment(room, segment) {
   });
 }
 
+function addRoomEvent(room, type, message, playerId = null) {
+  room.events = [
+    ...(room.events || []),
+    {
+      id: uid("event"),
+      type,
+      message,
+      playerId,
+      createdAt: now()
+    }
+  ].slice(-60);
+}
+
+function playerLabel(room, playerId) {
+  return room.players.find((player) => player.id === playerId)?.name || "未知玩家";
+}
+
+function validatePlayerSegment(text, room) {
+  if (/https?:\/\/|www\./i.test(text)) return "故事段落里先不要放链接。";
+  if (/(.)\1{8,}/u.test(text)) return "这一段里有太长的重复字符，稍微整理一下再提交。";
+  if (/```|<\/?[a-z][\s\S]*?>/i.test(text)) return "这里请提交故事正文，不要放代码或网页标签。";
+  if (/^(作为|以下是|我将|当然可以|Sure|Here)/i.test(text.trim())) {
+    return "这一段看起来像说明文字，请改成故事正文再提交。";
+  }
+  if (text.length < Math.min(8, room.wordLimit)) return "这一段有点太短了，至少写成一个完整动作或画面。";
+  return "";
+}
+
 async function maybeAddBridge(room) {
   if (!room.enableAIBridge) return;
   if (room.playerTurnsCompleted === 0) return;
@@ -128,10 +158,11 @@ async function maybeAddBridge(room) {
     authorType: "system",
     authorId: null,
     authorName: "系统主持人",
-    text: await createBridgeSegment(getRoomStoryText(room)),
+    text: await createBridgeSegment(getRoomStoryText(room), room.storyStyle),
     roundNumber: room.currentRound,
     requirement: null
   });
+  addRoomEvent(room, "system", "系统主持人插入了一段中间衔接。");
 }
 
 async function advanceTurn(room) {
@@ -149,7 +180,7 @@ async function advanceTurn(room) {
   room.turnIndex = (room.turnIndex + 1) % room.players.length;
   room.currentRound = room.playerTurnsCompleted + 1;
   room.currentTurnPlayerId = room.players[room.turnIndex].id;
-  room.currentRequirement = await createRequirement(room.currentRound, getRoomStoryText(room));
+  room.currentRequirement = await createRequirement(room.currentRound, getRoomStoryText(room), room.storyStyle);
   room.requirementRerollVotes = [];
 }
 
@@ -203,6 +234,7 @@ function createRoom({ name, settings }) {
     timeLimit: settings?.timeLimit || "none",
     enableAIBridge: settings?.enableAIBridge !== false,
     enableAIEnding: settings?.enableAIEnding !== false,
+    storyStyle: settings?.storyStyle || "suspense",
     openingOptions: [],
     selectedOpeningId: null,
     openingRerollVotes: [],
@@ -212,6 +244,7 @@ function createRoom({ name, settings }) {
     turnIndex: 0,
     playerTurnsCompleted: 0,
     createdAt: now(),
+    events: [],
     story: {
       id: uid("story"),
       roomId: code,
@@ -222,11 +255,12 @@ function createRoom({ name, settings }) {
   };
 
   rooms.set(code, room);
+  addRoomEvent(room, "room", `${host.name} 创建了房间。`, host.id);
   return { room, player: host };
 }
 
 async function refreshOpeningOptions(room) {
-  const openingTexts = await createOpeningOptions(3);
+  const openingTexts = await createOpeningOptions(3, room.storyStyle);
   room.openingOptions = openingTexts.map((text) => ({
     id: uid("opening"),
     roomId: room.code,
@@ -284,6 +318,7 @@ async function handleApi(req, res) {
         turnOrder: room.players.length
       };
       room.players.push(player);
+      addRoomEvent(room, "player", `${player.name} 加入了房间。`, player.id);
       await saveAndBroadcast(room);
       sendJson(res, 200, { room: publicRoom(room), player });
       return;
@@ -338,6 +373,8 @@ async function handleApi(req, res) {
         room.timeLimit = body.timeLimit || room.timeLimit;
         room.enableAIBridge = Boolean(body.enableAIBridge);
         room.enableAIEnding = Boolean(body.enableAIEnding);
+        room.storyStyle = body.storyStyle || room.storyStyle || "suspense";
+        addRoomEvent(room, "room", `${playerLabel(room, playerId)} 更新了本局设置。`, playerId);
         await saveAndBroadcast(room);
         sendJson(res, 200, { room: publicRoom(room) });
         return;
@@ -347,6 +384,7 @@ async function handleApi(req, res) {
         const player = room.players.find((item) => item.id === playerId);
         if (!player) return sendJson(res, 404, { error: "玩家不存在。" });
         player.ready = Boolean(body.ready);
+        addRoomEvent(room, "player", `${player.name}${player.ready ? "准备好了" : "取消了准备"}。`, player.id);
         await saveAndBroadcast(room);
         sendJson(res, 200, { room: publicRoom(room) });
         return;
@@ -357,6 +395,7 @@ async function handleApi(req, res) {
         if (room.players.length < 2) return sendJson(res, 409, { error: "至少需要2名玩家。" });
         await refreshOpeningOptions(room);
         room.status = "selecting_opening";
+        addRoomEvent(room, "room", "游戏开始，进入故事开头选择。", playerId);
         await saveAndBroadcast(room);
         sendJson(res, 200, { room: publicRoom(room) });
         return;
@@ -373,6 +412,7 @@ async function handleApi(req, res) {
 
         if (room.openingRerollVotes.length >= neededVotes(room)) {
           await refreshOpeningOptions(room);
+          addRoomEvent(room, "vote", "重抽开头投票通过，系统换了一批开头。");
         }
 
         await saveAndBroadcast(room);
@@ -408,7 +448,8 @@ async function handleApi(req, res) {
         room.requirementRerollVotes = [];
         room.currentRound = 1;
         room.currentTurnPlayerId = room.players[0].id;
-        room.currentRequirement = await createRequirement(1, getRoomStoryText(room));
+        room.currentRequirement = await createRequirement(1, getRoomStoryText(room), room.storyStyle);
+        addRoomEvent(room, "story", `本局开头已确定：${picked.text}`, playerId);
         await saveAndBroadcast(room);
         sendJson(res, 200, { room: publicRoom(room) });
         return;
@@ -428,6 +469,7 @@ async function handleApi(req, res) {
           room.currentTurnPlayerId = null;
           room.currentRequirement = null;
           room.requirementRerollVotes = [];
+          addRoomEvent(room, "vote", "结尾投票通过，故事进入收束阶段。");
         }
 
         await saveAndBroadcast(room);
@@ -443,6 +485,8 @@ async function handleApi(req, res) {
         const text = String(body.text || "").trim();
         if (!text) return sendJson(res, 400, { error: "段落不能为空。" });
         if (text.length > room.wordLimit) return sendJson(res, 400, { error: `不能超过 ${room.wordLimit} 字。` });
+        const validationError = validatePlayerSegment(text, room);
+        if (validationError) return sendJson(res, 400, { error: validationError });
         if (room.currentRequirement?.keyword && !text.includes(room.currentRequirement.keyword)) {
           return sendJson(res, 400, { error: `这一段需要包含关键词「${room.currentRequirement.keyword}」。` });
         }
@@ -455,6 +499,7 @@ async function handleApi(req, res) {
           roundNumber: room.currentRound,
           requirement: room.currentRequirement
         });
+        addRoomEvent(room, "story", `${player.name} 提交了第 ${room.currentRound} 轮段落。`, player.id);
         await advanceTurn(room);
         await saveAndBroadcast(room);
         sendJson(res, 200, { room: publicRoom(room) });
@@ -471,8 +516,9 @@ async function handleApi(req, res) {
         if (body.vote !== false) room.requirementRerollVotes.push(playerId);
 
         if (room.requirementRerollVotes.length >= neededVotes(room)) {
-          room.currentRequirement = await createRequirement(room.currentRound, getRoomStoryText(room));
+          room.currentRequirement = await createRequirement(room.currentRound, getRoomStoryText(room), room.storyStyle);
           room.requirementRerollVotes = [];
+          addRoomEvent(room, "vote", "换题投票通过，系统更新了本轮写作要求。");
         }
 
         await saveAndBroadcast(room);
@@ -501,13 +547,28 @@ async function handleApi(req, res) {
             authorType: "system",
             authorId: null,
             authorName: "系统主持人",
-            text: await createEndingSegment(getRoomStoryText(room)),
+            text: await createEndingSegment(getRoomStoryText(room), room.storyStyle),
             roundNumber: room.currentRound,
             requirement: null
           });
         }
         room.status = "finished";
         room.requirementRerollVotes = [];
+        addRoomEvent(room, "story", "系统生成了最终结尾，故事完成。", playerId);
+        await saveAndBroadcast(room);
+        sendJson(res, 200, { room: publicRoom(room) });
+        return;
+      }
+
+      if (req.method === "POST" && action === "force-ending") {
+        if (playerId !== room.hostId) return sendJson(res, 403, { error: "只有房主可以提前收束故事。" });
+        if (room.status !== "playing") return sendJson(res, 409, { error: "当前不能提前收束。" });
+        room.status = "ending";
+        room.currentTurnPlayerId = null;
+        room.currentRequirement = null;
+        room.requirementRerollVotes = [];
+        room.endVotes = [];
+        addRoomEvent(room, "room", "房主提前将故事带入结尾阶段。", playerId);
         await saveAndBroadcast(room);
         sendJson(res, 200, { room: publicRoom(room) });
         return;
@@ -522,7 +583,8 @@ async function handleApi(req, res) {
         room.turnIndex = 0;
         room.currentRound = room.playerTurnsCompleted + 1;
         room.currentTurnPlayerId = room.players[0].id;
-        room.currentRequirement = await createRequirement(room.currentRound, getRoomStoryText(room));
+        room.currentRequirement = await createRequirement(room.currentRound, getRoomStoryText(room), room.storyStyle);
+        addRoomEvent(room, "room", "玩家选择继续加写一轮。", playerId);
         await saveAndBroadcast(room);
         sendJson(res, 200, { room: publicRoom(room) });
         return;

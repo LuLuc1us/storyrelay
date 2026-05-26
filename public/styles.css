@@ -329,6 +329,50 @@ label {
   padding: 13px;
 }
 
+.host-controls {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #c8d8d3;
+  border-radius: 8px;
+  background: #f3f8f6;
+  padding: 12px;
+}
+
+.host-controls p {
+  margin: 4px 0 0;
+  line-height: 1.55;
+}
+
+.event-log {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.event-log ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.event-log li {
+  display: grid;
+  gap: 3px;
+  border-left: 3px solid #d8cbb8;
+  padding-left: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.event-log time {
+  color: #958d82;
+  font-size: 12px;
+}
+
 .vote-box {
   border: 1px solid #dccfba;
   border-radius: 8px;

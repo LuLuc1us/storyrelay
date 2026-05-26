@@ -13,6 +13,14 @@ const state = {
   isPolishing: false
 };
 
+const styleOptions = [
+  ["suspense", "悬疑怪谈"],
+  ["fantasy", "奇幻冒险"],
+  ["warm", "温暖治愈"],
+  ["absurd", "荒诞日常"],
+  ["sciFi", "轻科幻"]
+];
+
 const api = {
   async get(path) {
     const response = await fetch(path);
@@ -139,6 +147,10 @@ function isCurrentPlayer() {
   return state.player?.id && state.room?.currentTurnPlayerId === state.player.id;
 }
 
+function storyStyleLabel(value) {
+  return styleOptions.find(([key]) => key === value)?.[1] || "悬疑怪谈";
+}
+
 function clearDraftAssist() {
   state.draft = "";
   state.polish = null;
@@ -211,6 +223,11 @@ function renderHome() {
             <option value="5">5 分钟</option>
           </select>
         </label>
+        <label>故事风格
+          <select name="storyStyle">
+            ${styleOptions.map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}
+          </select>
+        </label>
         <label class="row"><input name="enableAIBridge" type="checkbox" checked /> 启用系统中间段</label>
         <label class="row"><input name="enableAIEnding" type="checkbox" checked /> 启用系统结尾</label>
         <button type="submit">创建房间</button>
@@ -244,6 +261,7 @@ function renderHome() {
           wordLimit: Number(form.get("wordLimit")),
           maxRounds: Number(form.get("maxRounds")),
           timeLimit: form.get("timeLimit"),
+          storyStyle: form.get("storyStyle"),
           enableAIBridge: form.has("enableAIBridge"),
           enableAIEnding: form.has("enableAIEnding")
         }
@@ -294,6 +312,31 @@ function renderPlayers() {
   `;
 }
 
+function renderEventLog(limit = 8) {
+  const events = (state.room?.events || []).slice(-limit).reverse();
+  if (!events.length) return "";
+  return `
+    <div class="event-log">
+      <div class="row">
+        <strong>事件日志</strong>
+        <span class="pill">${events.length}</span>
+      </div>
+      <ul>
+        ${events
+          .map(
+            (event) => `
+              <li>
+                <span>${escapeHtml(event.message)}</span>
+                <time>${new Date(event.createdAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</time>
+              </li>
+            `
+          )
+          .join("")}
+      </ul>
+    </div>
+  `;
+}
+
 function renderLobby() {
   const room = state.room;
   layout(
@@ -329,6 +372,13 @@ function renderLobby() {
                     <option value="5" ${room.timeLimit === "5" ? "selected" : ""}>5 分钟</option>
                   </select>
                 </label>
+                <label>故事风格
+                  <select id="storyStyle">
+                    ${styleOptions
+                      .map(([value, label]) => `<option value="${value}" ${(room.storyStyle || "suspense") === value ? "selected" : ""}>${label}</option>`)
+                      .join("")}
+                  </select>
+                </label>
                 <label class="row"><input id="enableAIBridge" type="checkbox" ${room.enableAIBridge ? "checked" : ""} /> 启用系统中间段</label>
                 <label class="row"><input id="enableAIEnding" type="checkbox" ${room.enableAIEnding ? "checked" : ""} /> 启用系统结尾</label>
                 <button id="saveSettings" class="secondary">保存设置</button>
@@ -336,10 +386,11 @@ function renderLobby() {
               `
               : `
                 <p>每轮 ${room.wordLimit} 字以内，合计 ${room.maxRounds} 轮。</p>
-                <p class="muted">系统中间段：${room.enableAIBridge ? "开启" : "关闭"} · 系统结尾：${room.enableAIEnding ? "开启" : "关闭"}</p>
+                <p class="muted">风格：${storyStyleLabel(room.storyStyle)} · 系统中间段：${room.enableAIBridge ? "开启" : "关闭"} · 系统结尾：${room.enableAIEnding ? "开启" : "关闭"}</p>
                 <button id="readyToggle">${state.player?.ready ? "取消准备" : "准备"}</button>
               `
           }
+          ${renderEventLog(6)}
         </div>
       </section>
     `,
@@ -359,6 +410,7 @@ function renderLobby() {
           wordLimit: Number(document.querySelector("#wordLimit").value),
           maxRounds: Number(document.querySelector("#maxRounds").value),
           timeLimit: document.querySelector("#timeLimit").value,
+          storyStyle: document.querySelector("#storyStyle").value,
           enableAIBridge: document.querySelector("#enableAIBridge").checked,
           enableAIEnding: document.querySelector("#enableAIEnding").checked
         }));
@@ -580,6 +632,19 @@ function renderEndingVote(room) {
   `;
 }
 
+function renderHostControls(room) {
+  if (!isHost() || room.status !== "playing") return "";
+  return `
+    <div class="host-controls">
+      <div>
+        <strong>房主控制</strong>
+        <p class="muted">节奏开始跑偏时，可以提前进入结尾阶段。</p>
+      </div>
+      <button id="forceEnding" class="secondary" type="button">提前收束</button>
+    </div>
+  `;
+}
+
 function renderPolishPanel() {
   if (state.isPolishing) {
     return `<div class="assist-box muted">AI 主持人正在整理语句……</div>`;
@@ -675,7 +740,7 @@ function renderPlaying() {
       <aside class="panel stack">
         <div class="turn-head">
           <h3>当前回合</h3>
-          <span class="pill">第 ${room.currentRound} / ${room.maxRounds} 轮</span>
+          <span class="pill">${storyStyleLabel(room.storyStyle)}</span>
         </div>
         <p class="turn-player">轮到：<strong>${escapeHtml(playerName(room.currentTurnPlayerId))}</strong></p>
         <div class="row">
@@ -686,6 +751,7 @@ function renderPlaying() {
           ${renderRequirementRerollVote(room)}
           ${renderEndingVote(room)}
         </div>
+        ${renderHostControls(room)}
         ${
           isCurrentPlayer()
             ? `
@@ -698,6 +764,7 @@ function renderPlaying() {
             `
             : `<p class="muted">等待当前玩家写作中。</p>`
         }
+        ${renderEventLog(7)}
       </aside>
     </section>
   `);
@@ -764,6 +831,15 @@ function renderPlaying() {
       }
     });
   }
+
+  document.querySelector("#forceEnding")?.addEventListener("click", async () => {
+    try {
+      await api.post(`/api/rooms/${room.code}/force-ending`, actionBody());
+      setError("");
+    } catch (error) {
+      setError(error.message);
+    }
+  });
 }
 
 function renderEnding() {

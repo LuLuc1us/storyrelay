@@ -6,6 +6,7 @@ import {
   naturalKeywordPool,
   openingPool,
   sample,
+  styleProfiles,
   takeRandom,
   twistPool
 } from "./content.js";
@@ -17,15 +18,16 @@ const OPENROUTER_FALLBACK_MODELS = [OPENROUTER_DEFAULT_MODEL, "meta-llama/llama-
 const CHINESE_RE = /[\u3400-\u9fff]/g;
 const LATIN_RE = /[A-Za-z]/g;
 
-export async function createOpeningOptions(count = 3) {
-  return createOpeningOptionsWithAI(count);
+export async function createOpeningOptions(count = 3, storyStyle = "suspense") {
+  return createOpeningOptionsWithAI(count, storyStyle);
 }
 
-export async function createRequirement(roundNumber, storyText = "") {
-  const fallbackRequirement = createFallbackRequirement(roundNumber, storyText);
+export async function createRequirement(roundNumber, storyText = "", storyStyle = "suspense") {
+  const style = getStyleProfile(storyStyle);
+  const fallbackRequirement = createFallbackRequirement(roundNumber, storyText, storyStyle);
   const aiRequirement = await generateJson({
     instructions:
-      "你是多人故事接龙游戏《故事接龙工坊》的主持人。请生成一组简体中文写作要求，必须适合中文短篇悬疑/奇幻故事接龙。关键词要自然、容易嵌入当前剧情，优先使用故事里已出现或很容易出现的意象，不要突然指定违和的动物、稀有物品或过于具体的道具。禁止输出英文。只输出 JSON，不要解释。",
+      `你是多人故事接龙游戏《故事接龙工坊》的主持人。请生成一组简体中文写作要求，必须适合中文短篇故事接龙。当前风格：${style.label}，${style.prompt}。关键词要自然、容易嵌入当前剧情，优先使用故事里已出现或很容易出现的意象，不要突然指定违和的动物、稀有物品或过于具体的道具。禁止输出英文。只输出 JSON，不要解释。`,
     input: `当前轮数：${roundNumber}\n当前故事：${storyText || "故事刚开始。"}\n\n请输出 JSON：{"keyword":"一个1到4字的中文自然关键词","emotion":"一种中文情绪或氛围","twist":"一句中文剧情转折要求，以句号结尾"}。所有字段都必须是中文。关键词要能自然放进下一段，不要太突兀。`,
     fallback: null
   });
@@ -52,27 +54,30 @@ export async function createRequirement(roundNumber, storyText = "") {
   return fallbackRequirement;
 }
 
-function createFallbackRequirement(roundNumber, storyText = "") {
+function createFallbackRequirement(roundNumber, storyText = "", storyStyle = "suspense") {
   return {
     id: `req_${Math.random().toString(36).slice(2, 10)}`,
     roundNumber,
-    keyword: chooseNaturalKeyword(storyText),
+    keyword: chooseNaturalKeyword(storyText, storyStyle),
     emotion: sample(emotionPool),
     twist: sample(twistPool)
   };
 }
 
-function chooseNaturalKeyword(storyText = "") {
+function chooseNaturalKeyword(storyText = "", storyStyle = "suspense") {
+  const style = getStyleProfile(storyStyle);
   const present = [...naturalKeywordPool, ...keywordPool].filter((keyword) => storyText.includes(keyword));
   if (present.length) return sample(present);
+  if (style.openingHints?.length) return sample([...naturalKeywordPool, ...style.openingHints]);
   return sample(naturalKeywordPool);
 }
 
-export async function createBridgeSegment(storyText = "") {
+export async function createBridgeSegment(storyText = "", storyStyle = "suspense") {
+  const style = getStyleProfile(storyStyle);
   const fallback = sample(bridgePool);
   const bridge = await generateText({
     instructions:
-      "你是故事接龙游戏主持人。请用简体中文写一段过渡段，帮助玩家故事更连贯。不要结束故事，不要否定玩家设定，不要抢走主角行动权。禁止输出英文。",
+      `你是故事接龙游戏主持人。当前风格：${style.label}，${style.prompt}。请用简体中文写一段过渡段，帮助玩家故事更连贯。不要结束故事，不要否定玩家设定，不要抢走主角行动权。禁止输出英文。`,
     input: `当前完整故事：\n${storyText}\n\n请写 80 到 150 个中文字的系统中间段。只输出中文段落正文，不要解释。`,
     fallback,
     maxOutputTokens: 220
@@ -80,11 +85,12 @@ export async function createBridgeSegment(storyText = "") {
   return trimToLength(ensureChineseText(bridge, fallback), 180);
 }
 
-export async function createEndingSegment(storyText = "") {
+export async function createEndingSegment(storyText = "", storyStyle = "suspense") {
+  const style = getStyleProfile(storyStyle);
   const fallback = sample(endingPool);
   const ending = await generateText({
     instructions:
-      "你是故事接龙游戏主持人。请根据完整故事写一个有余味的简体中文结尾。不要解释太多，保留一点开放感。禁止输出英文。",
+      `你是故事接龙游戏主持人。当前风格：${style.label}，${style.prompt}。请根据完整故事写一个有余味的简体中文结尾。不要解释太多，保留一点开放感。禁止输出英文。`,
     input: `完整故事：\n${storyText}\n\n请写 150 到 250 个中文字的最终结尾。只输出中文结尾正文，不要解释。`,
     fallback,
     maxOutputTokens: 360
@@ -92,11 +98,12 @@ export async function createEndingSegment(storyText = "") {
   return trimToLength(ensureChineseText(ending, fallback), 300);
 }
 
-async function createOpeningOptionsWithAI(count) {
+async function createOpeningOptionsWithAI(count, storyStyle = "suspense") {
+  const style = getStyleProfile(storyStyle);
   const fallbackOptions = takeRandom(openingPool, count);
   const text = await generateText({
     instructions:
-      "你是故事接龙游戏主持人。请生成简体中文故事开头，适合多人继续创作。每个开头必须是具体场景陈述句，有清楚的人、地点、物件或事件。不要写成谜语、宣传语、问题、设定简介或“一个……的……”模板。禁止输出英文、拼音和任何拉丁字母。",
+      `你是故事接龙游戏主持人。当前风格：${style.label}，${style.prompt}。请生成简体中文故事开头，适合多人继续创作。每个开头必须是具体场景陈述句，有清楚的人、地点、物件或事件。不要写成谜语、宣传语、问题、设定简介或“一个……的……”模板。禁止输出英文、拼音和任何拉丁字母。`,
     input: `请生成 ${count} 个不同的中文故事开头。每行一个，不要编号，不要解释，不要英文。句式要多样，尽量像“凌晨三点，整座城市的钟同时停在了同一秒。”这种具体陈述句。`,
     fallback: fallbackOptions.join("\n"),
     maxOutputTokens: 260
@@ -107,6 +114,10 @@ async function createOpeningOptionsWithAI(count) {
     .filter((line) => isValidChineseOpening(line))
     .slice(0, count);
   return lines.length >= count ? lines : fallbackOptions;
+}
+
+function getStyleProfile(storyStyle = "suspense") {
+  return styleProfiles[storyStyle] || styleProfiles.suspense;
 }
 
 function escapeRegExp(text) {
