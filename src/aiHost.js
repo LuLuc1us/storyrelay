@@ -88,7 +88,7 @@ export async function createBridgeSegment(storyText = "", storyStyle = "suspense
 
 export async function createEndingSegment(storyText = "", storyStyle = "suspense") {
   const style = getStyleProfile(storyStyle);
-  const fallback = sample(endingPool);
+  const fallback = createLocalEndingFallback(storyText, storyStyle);
   const ending = await generateText({
     instructions:
       `你是故事接龙游戏主持人。当前风格：${style.label}，${style.prompt}。请根据完整故事写一个有余味的简体中文结尾。不要解释太多，保留一点开放感。禁止输出英文。`,
@@ -97,6 +97,26 @@ export async function createEndingSegment(storyText = "", storyStyle = "suspense
     maxOutputTokens: 360
   });
   return trimToLength(ensureChineseText(ending, fallback), 300);
+}
+
+function createLocalEndingFallback(storyText = "", storyStyle = "suspense") {
+  const style = getStyleProfile(storyStyle);
+  const sentences = extractStorySentences(storyText);
+  const last = sentences.at(-1) || "故事停在了一个尚未说完的瞬间。";
+  const previous = sentences.at(-2) || sentences.at(0) || "";
+  const anchor = pickAnchorPhrase(storyText) || pickAnchorPhrase(last) || pickAnchorPhrase(previous) || "那件事";
+
+  if (!sentences.length) return sample(endingPool);
+
+  const styleClose = {
+    suspense: `后来，${anchor}没有再被任何人主动提起。可每当相似的声音在夜里响起，他们都会想起最后那一刻：${trimEnding(last)}。答案也许已经出现过，只是没人敢把它念完。`,
+    fantasy: `他们最终离开了那里，却没有真正告别${anchor}。临走前，最后的线索安静地留在原处，像一扇没有关严的门。若有人再次沿着这段故事走下去，也许会发现，结局只是另一条路的开端。`,
+    warm: `很久以后，${anchor}仍被他们记得。那些紧张和误会慢慢沉下来，只剩下最后那个片刻：${trimEnding(last)}。故事没有给出所有答案，却让每个人都带走了一点可以继续生活的光。`,
+    absurd: `事情就这样暂时结束了，虽然没人能完全解释${anchor}到底算什么。大家试着把一切当成普通的一天，可最后那句话总会在不合时宜的时候冒出来。于是他们明白，故事只是学会了换一种方式继续。`,
+    sciFi: `系统记录在这里中断，关于${anchor}的解释没有被保存。多年后，有人重新打开那份残缺档案，只看到最后一行仍在闪烁：${trimEnding(last)}。它不像答案，更像一次尚未完成的回信。`
+  };
+
+  return styleClose[storyStyle] || styleClose.suspense;
 }
 
 async function createOpeningOptionsWithAI(count, storyStyle = "suspense") {
@@ -160,6 +180,26 @@ const emotionHints = {
 
 function trimEnding(text) {
   return text.replace(/[。！？!?]+$/, "");
+}
+
+function extractStorySentences(storyText = "") {
+  return String(storyText || "")
+    .split(/(?<=[。！？!?])|\n+/)
+    .map((line) => line.replace(/^>+\s*/, "").trim())
+    .filter((line) => isMostlyChinese(line, 0.45) && line.length >= 6)
+    .slice(-8);
+}
+
+function pickAnchorPhrase(text = "") {
+  const cleaned = String(text || "").replace(/[“”"'\s]/g, "");
+  const directAnchor = cleaned.match(/那封信|收件人|自己|日记|镜子|那扇门|旧照片|声音|名单|车站|手表|地图|钥匙|房间|城市/);
+  if (directAnchor) return directAnchor[0];
+
+  const strongPhrases = cleaned.match(/[\u4e00-\u9fff]{2,8}(信|日记|镜子|门|照片|声音|名单|车站|手表|地图|钥匙|房间|城市|收件人|自己)/g);
+  if (strongPhrases?.length) return strongPhrases[0].replace(/^(只有|只见|一个|那位|这个|那个)/, "").slice(-8);
+
+  const words = cleaned.match(/[\u4e00-\u9fff]{2,6}/g) || [];
+  return words.find((word) => !/他们|我们|一切|故事|后来|最后|只是|没有|那个|这个/.test(word)) || "";
 }
 
 function sentenceCount(text) {

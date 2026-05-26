@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { aiQualityGuardsForTest } from "../src/aiHost.js";
+import { aiQualityGuardsForTest, createEndingSegment } from "../src/aiHost.js";
 
 const {
   ensureChineseText,
@@ -42,4 +42,13 @@ test("keeps requirement keywords short and natural", () => {
   assert.equal(isNaturalKeyword("镜子"), true);
   assert.equal(isNaturalKeyword("一只突然出现的乌鸦"), false);
   assert.equal(isNaturalKeyword("门锁，红光"), false);
+});
+
+test("local ending fallback uses current story details", async () => {
+  const ending = await createEndingSegment(
+    "那封信没有寄件人，只有一句话：不要相信醒来后的自己。\n我从信箱中拿出那封信，翻来翻去，只见一个收件人是我。瞬间警惕起来，一切都回头看。",
+    "suspense"
+  );
+  assert.match(ending, /信|收件人|自己/);
+  assert.equal(ending.includes("天亮时，一切看上去都回到了原处"), false);
 });
