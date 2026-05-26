@@ -44,6 +44,18 @@ function saveRoomCode(code) {
   localStorage.setItem("storyRelayRoomCode", code);
 }
 
+function clearSavedRoom() {
+  if (state.eventSource) state.eventSource.close();
+  localStorage.removeItem("storyRelayPlayer");
+  localStorage.removeItem("storyRelayRoomCode");
+  state.player = null;
+  state.room = null;
+  state.lastRoomCode = "";
+  state.draft = "";
+  state.polish = null;
+  state.isPolishing = false;
+}
+
 function setError(message) {
   state.error = message || "";
   render();
@@ -162,7 +174,10 @@ function renderHome() {
             <h2>继续上次房间</h2>
             <p class="muted">找到本机最近进入的房间 ${escapeHtml(state.lastRoomCode)}。</p>
           </div>
-          <button id="resumeRoom" type="button">继续</button>
+          <div class="row">
+            <button id="resumeRoom" type="button">继续</button>
+            <button id="forgetRoom" class="secondary" type="button">忘记这个房间</button>
+          </div>
         </section>
       `
       : "";
@@ -212,6 +227,11 @@ function renderHome() {
 
   document.querySelector("#resumeRoom")?.addEventListener("click", () => {
     resumeRoom();
+  });
+
+  document.querySelector("#forgetRoom")?.addEventListener("click", () => {
+    clearSavedRoom();
+    setError("");
   });
 
   document.querySelector("#createForm").addEventListener("submit", async (event) => {
@@ -327,9 +347,9 @@ function renderLobby() {
   );
 
   document.querySelector("#leave").addEventListener("click", () => {
-    localStorage.removeItem("storyRelayPlayer");
-    localStorage.removeItem("storyRelayRoomCode");
-    location.reload();
+    clearSavedRoom();
+    history.replaceState(null, "", "/");
+    setError("");
   });
 
   if (isHost()) {
@@ -811,9 +831,6 @@ function render() {
 if (state.storyViewCode) {
   render();
   openStoryView();
-} else if (state.player?.roomId || state.lastRoomCode) {
-  render();
-  resumeRoom(state.player?.roomId || state.lastRoomCode);
 } else {
   render();
 }
