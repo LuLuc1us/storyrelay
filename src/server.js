@@ -4,8 +4,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  createBridgeSegment,
-  createEndingSegment,
+  createBridgeSegmentResult,
+  createEndingSegmentResult,
   createOpeningOptions,
   createRequirement,
   checkAIConnection,
@@ -155,15 +155,17 @@ async function maybeAddBridge(room) {
   if (room.playerTurnsCompleted === 0) return;
   if (room.playerTurnsCompleted % 2 !== 0) return;
 
+  const bridge = await createBridgeSegmentResult(getRoomStoryText(room), room.storyStyle);
   addSegment(room, {
     authorType: "system",
     authorId: null,
-    authorName: "系统主持人",
-    text: await createBridgeSegment(getRoomStoryText(room), room.storyStyle),
+    authorName: bridge.sourceLabel,
+    sourceLabel: bridge.sourceLabel,
+    text: bridge.text,
     roundNumber: room.currentRound,
     requirement: null
   });
-  addRoomEvent(room, "system", "系统主持人插入了一段中间衔接。");
+  addRoomEvent(room, "system", `${bridge.sourceLabel}插入了一段中间衔接。`);
 }
 
 async function advanceTurn(room) {
@@ -198,7 +200,7 @@ function exportMarkdown(room) {
   ];
 
   for (const segment of room.story.segments) {
-    const label = segment.authorType === "system" ? "系统段落" : segment.authorName;
+    const label = segment.authorType === "system" ? segment.sourceLabel || segment.authorName || "系统段落" : segment.authorName;
     lines.push(`### ${label}`);
     if (segment.requirement) {
       lines.push(
@@ -573,11 +575,13 @@ async function handleApi(req, res) {
       if (req.method === "POST" && action === "generate-ending") {
         if (room.status !== "ending") return sendJson(res, 409, { error: "还没有进入结尾阶段。" });
         if (room.enableAIEnding) {
+          const ending = await createEndingSegmentResult(getRoomStoryText(room), room.storyStyle);
           addSegment(room, {
             authorType: "system",
             authorId: null,
-            authorName: "系统主持人",
-            text: await createEndingSegment(getRoomStoryText(room), room.storyStyle),
+            authorName: ending.sourceLabel,
+            sourceLabel: ending.sourceLabel,
+            text: ending.text,
             roundNumber: room.currentRound,
             requirement: null
           });

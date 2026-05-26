@@ -28,8 +28,8 @@ export async function createRequirement(roundNumber, storyText = "", storyStyle 
   const fallbackRequirement = createFallbackRequirement(roundNumber, storyText, storyStyle);
   const aiRequirement = await generateJson({
     instructions:
-      `你是多人故事接龙游戏《故事接龙工坊》的主持人。请生成一组简体中文写作要求，必须适合中文短篇故事接龙。当前风格：${style.label}，${style.prompt}。关键词要自然、容易嵌入当前剧情，优先使用故事里已出现或很容易出现的意象，不要突然指定违和的动物、稀有物品或过于具体的道具。禁止输出英文。只输出 JSON，不要解释。`,
-    input: `当前轮数：${roundNumber}\n当前故事：${storyText || "故事刚开始。"}\n\n请输出 JSON：{"keyword":"一个1到4字的中文自然关键词","emotion":"一种中文情绪或氛围","twist":"一句中文剧情转折要求，以句号结尾"}。所有字段都必须是中文。关键词要能自然放进下一段，不要太突兀。`,
+      `你是多人故事接龙游戏《故事接龙工坊》的主持人。请生成一组简体中文写作要求，必须接住当前故事，而不是突然换题材。当前风格：${style.label}，${style.prompt}。关键词优先取自故事里已经出现的物件、地点、人物关系或相近意象；如果故事刚开始，就选日常、自然、好写的词。转折要像一条可继续写的剧情提示，不要写晦涩谜语，不要指定违和动物、稀有物品或过于具体的道具。禁止输出英文。只输出 JSON，不要解释。`,
+    input: `当前轮数：${roundNumber}\n当前故事：${storyText || "故事刚开始。"}\n\n请输出 JSON：{"keyword":"一个1到4字的中文自然关键词","emotion":"一种中文情绪或氛围","twist":"一句中文剧情转折要求，以句号结尾"}。所有字段都必须是中文。关键词要能自然放进下一段，转折要和当前故事已有线索有关。`,
     fallback: null
   });
 
@@ -41,7 +41,8 @@ export async function createRequirement(roundNumber, storyText = "", storyStyle 
     isMostlyChinese(aiRequirement.keyword, 0.7) &&
     isMostlyChinese(aiRequirement.emotion, 0.7) &&
     isMostlyChinese(aiRequirement.twist, 0.6) &&
-    isNaturalKeyword(aiRequirement.keyword)
+    isNaturalKeyword(aiRequirement.keyword) &&
+    requirementFitsStory(aiRequirement, storyText, storyStyle)
   ) {
     return {
       id: `req_${Math.random().toString(36).slice(2, 10)}`,
@@ -60,20 +61,86 @@ function createFallbackRequirement(roundNumber, storyText = "", storyStyle = "su
     id: `req_${Math.random().toString(36).slice(2, 10)}`,
     roundNumber,
     keyword: chooseNaturalKeyword(storyText, storyStyle),
-    emotion: sample(emotionPool),
-    twist: sample(twistPool)
+    emotion: chooseContextualEmotion(storyText, storyStyle),
+    twist: chooseContextualTwist(storyText, storyStyle)
   };
 }
 
 function chooseNaturalKeyword(storyText = "", storyStyle = "suspense") {
   const style = getStyleProfile(storyStyle);
-  const present = [...naturalKeywordPool, ...keywordPool].filter((keyword) => storyText.includes(keyword));
+  const present = getContextualKeywords(storyText, storyStyle);
   if (present.length) return sample(present);
   if (style.openingHints?.length) return sample([...naturalKeywordPool, ...style.openingHints]);
   return sample(naturalKeywordPool);
 }
 
-export async function createBridgeSegment(storyText = "", storyStyle = "suspense") {
+function getContextualKeywords(storyText = "", storyStyle = "suspense") {
+  const style = getStyleProfile(storyStyle);
+  const story = String(storyText || "");
+  const discovered = [
+    ...naturalKeywordPool,
+    ...keywordPool,
+    ...(style.openingHints || []),
+    "信箱",
+    "收件人",
+    "合照",
+    "同学",
+    "电台",
+    "名单",
+    "日记",
+    "录音",
+    "车站",
+    "灯塔",
+    "抽屉",
+    "箱子",
+    "便利店",
+    "货架"
+  ].filter((keyword) => story.includes(keyword));
+
+  const anchor = pickAnchorPhrase(story);
+  if (anchor && anchor.length <= 4) discovered.push(anchor);
+  return [...new Set(discovered)].filter(isNaturalKeyword);
+}
+
+function chooseContextualEmotion(storyText = "", storyStyle = "suspense") {
+  const story = String(storyText || "");
+  if (/信|旧照片|毕业|母亲|爷爷|葬礼|十年前/.test(story)) return sample(["怀念", "不安", "释然", "温暖"]);
+  if (/门|镜子|午夜|失踪|名单|声音|电台/.test(story)) return sample(["紧张", "恐惧", "压抑", "不安"]);
+  if (storyStyle === "warm") return sample(["温暖", "怀念", "希望", "平静"]);
+  if (storyStyle === "absurd") return sample(["荒诞", "混乱", "惊讶", "好奇"]);
+  if (storyStyle === "fantasy") return sample(["好奇", "希望", "紧张", "惊讶"]);
+  if (storyStyle === "sciFi") return sample(["不安", "好奇", "紧张", "麻木"]);
+  return sample(emotionPool);
+}
+
+function chooseContextualTwist(storyText = "", storyStyle = "suspense") {
+  const story = String(storyText || "");
+  const matched = [];
+  if (/信|收件人|邮局|明信片/.test(story)) matched.push("信里的某个细节被重新读出不同含义。", "收件人发现地址并不是现在的住处。");
+  if (/照片|合照|影像|视频|录音/.test(story)) matched.push("画面里一个被忽略的细节突然变得重要。", "记录里出现了没人记得说过的话。");
+  if (/门|房间|地下室|车站|街|地图/.test(story)) matched.push("原本熟悉的地点出现了不该存在的入口。", "他们发现来时的路和记忆里不一样。");
+  if (/时间|明天|手表|钟|重复/.test(story)) matched.push("时间顺序里出现了一个对不上的空缺。", "角色发现自己已经经历过这一刻。");
+  if (/镜子|玻璃|影子/.test(story)) matched.push("倒影或影子做出了和本人不同的动作。", "一个看似普通的反光暴露了新的线索。");
+  if (storyStyle === "warm") matched.push("一个善意的隐瞒被慢慢看见。", "旧物带出了一段被误会的往事。");
+  if (storyStyle === "absurd") matched.push("所有人都把异常当成日常，只有一个人觉得不对。", "规则突然换了一种荒唐却明确的说法。");
+  if (storyStyle === "fantasy") matched.push("一个不起眼的物件显出真正用途。", "前方的路回应了角色刚说出口的话。");
+  if (storyStyle === "sciFi") matched.push("系统记录和角色记忆出现了细微冲突。", "一条提示来自尚未发生的时刻。");
+  return sample(matched.length ? matched : twistPool);
+}
+
+function requirementFitsStory(requirement, storyText = "", storyStyle = "suspense") {
+  const keyword = String(requirement.keyword || "").trim();
+  const twist = String(requirement.twist || "").trim();
+  if (!isNaturalKeyword(keyword)) return false;
+  if (!storyText) return true;
+  const style = getStyleProfile(storyStyle);
+  const allowed = new Set([...naturalKeywordPool, ...keywordPool, ...(style.openingHints || []), ...getContextualKeywords(storyText, storyStyle)]);
+  if (!storyText.includes(keyword) && !allowed.has(keyword)) return false;
+  if (/谜题|命运|真相浮现|某种力量|未知存在|神秘气息|谁也说不清/.test(twist)) return false;
+  return true;
+}
+
+export async function createBridgeSegmentResult(storyText = "", storyStyle = "suspense") {
   const style = getStyleProfile(storyStyle);
   const fallback = sample(bridgePool);
   const bridge = await generateText({
@@ -83,10 +150,17 @@ export async function createBridgeSegment(storyText = "", storyStyle = "suspense
     fallback,
     maxOutputTokens: 220
   });
-  return trimToLength(ensureChineseText(bridge, fallback), 180);
+  return {
+    text: trimToLength(ensureChineseText(bridge, fallback), 180),
+    sourceLabel: getGenerationSourceLabel(bridge, fallback)
+  };
 }
 
-export async function createEndingSegment(storyText = "", storyStyle = "suspense") {
+export async function createBridgeSegment(storyText = "", storyStyle = "suspense") {
+  return (await createBridgeSegmentResult(storyText, storyStyle)).text;
+}
+
+export async function createEndingSegmentResult(storyText = "", storyStyle = "suspense") {
   const style = getStyleProfile(storyStyle);
   const fallback = createLocalEndingFallback(storyText, storyStyle);
   const ending = await generateText({
@@ -96,7 +170,19 @@ export async function createEndingSegment(storyText = "", storyStyle = "suspense
     fallback,
     maxOutputTokens: 360
   });
-  return trimToLength(ensureChineseText(ending, fallback), 300);
+  return {
+    text: trimToLength(ensureChineseText(ending, fallback), 300),
+    sourceLabel: getGenerationSourceLabel(ending, fallback)
+  };
+}
+
+export async function createEndingSegment(storyText = "", storyStyle = "suspense") {
+  return (await createEndingSegmentResult(storyText, storyStyle)).text;
+}
+
+function getGenerationSourceLabel(rawText, fallback) {
+  const usedProvider = getAIProvider() !== "local" && rawText && rawText !== fallback && ensureChineseText(rawText, fallback) !== fallback;
+  return usedProvider ? "AI 主持人" : "工坊主持人";
 }
 
 function createLocalEndingFallback(storyText = "", storyStyle = "suspense") {
@@ -256,8 +342,8 @@ function weaveTwist(text, twist) {
 export async function polishSegment(text, requirement, storyText = "") {
   const aiPolished = await generateText({
     instructions:
-      "你是故事接龙游戏里的中文编辑助手。请轻度润色玩家段落，让句子更明确、更顺、更可读。必须保留玩家原意和剧情事实，不要扩写成另一段故事，不要替玩家新增重大设定。只输出润色后的段落正文，不要写标题、解释、评价、理由、项目符号或修改说明。",
-    input: `当前故事上下文：\n${storyText || "暂无。"}\n\n本轮要求：关键词「${requirement?.keyword || "无"}」，情绪「${requirement?.emotion || "无"}」，转折「${requirement?.twist || "无"}」\n\n玩家原文：\n${text}\n\n请润色为一小段中文，尽量保留原文长度，确保关键词仍然出现。`,
+      "你是故事接龙游戏里的中文编辑助手。玩家原文可能来自语音识别，可能有错字、断句错误、同音误识别或表达含混。请先根据上下文理解玩家想表达的剧情，再把它整理成更明确、更顺、更可读的一小段中文。必须保留玩家原意、人物行动和剧情事实，不要扩写成另一段故事，不要替玩家新增重大设定。只输出润色后的段落正文，不要写标题、解释、评价、理由、项目符号或修改说明。",
+    input: `当前故事上下文：\n${storyText || "暂无。"}\n\n本轮要求：关键词「${requirement?.keyword || "无"}」，情绪「${requirement?.emotion || "无"}」，转折「${requirement?.twist || "无"}」\n\n玩家原文：\n${text}\n\n请先理解原意，再整理为一小段中文。长度尽量接近原文，确保关键词仍然出现。`,
     fallback: "",
     maxOutputTokens: 260
   });
@@ -272,7 +358,7 @@ export async function polishSegment(text, requirement, storyText = "") {
       original: text,
       polished: trimToLength(ensureSentence(cleanedAIPolished), 220),
       notes: [
-        "使用真实 AI 做了轻度润色，保留原意和剧情方向。",
+        "AI 主持人先按上下文理解原意，再做了轻度润色。",
         requirement?.keyword ? `检查了本轮关键词「${requirement.keyword}」。` : "检查了本轮要求。",
         "玩家仍可选择保留原文。"
       ]
@@ -285,7 +371,7 @@ export async function polishSegment(text, requirement, storyText = "") {
   polished = weaveEmotion(polished, requirement?.emotion);
   if (polished && !/[。！？!?]$/.test(polished)) polished += "。";
 
-  const notes = ["做了轻度润色，让句子更顺，但保留玩家原本的剧情方向。"];
+  const notes = ["工坊主持人做了基础整理，让句子更顺，并尽量保留玩家原本的剧情方向。"];
   if (requirement?.keyword) notes.push(`检查了本轮关键词「${requirement.keyword}」。`);
   if (requirement?.emotion) notes.push(`补了一点「${requirement.emotion}」的氛围质感。`);
   if (requirement?.twist) notes.push("把转折处理成更自然的停顿和推进。");
@@ -388,6 +474,7 @@ export const aiQualityGuardsForTest = {
   isValidChineseOpening,
   isVagueOpening,
   isNaturalKeyword,
+  requirementFitsStory,
   sanitizePolishedSegment
 };
 

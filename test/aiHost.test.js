@@ -8,6 +8,7 @@ const {
   isNaturalKeyword,
   isValidChineseOpening,
   isVagueOpening,
+  requirementFitsStory,
   sanitizePolishedSegment
 } = aiQualityGuardsForTest;
 
@@ -42,6 +43,12 @@ test("keeps requirement keywords short and natural", () => {
   assert.equal(isNaturalKeyword("镜子"), true);
   assert.equal(isNaturalKeyword("一只突然出现的乌鸦"), false);
   assert.equal(isNaturalKeyword("门锁，红光"), false);
+});
+
+test("rejects requirements that drift away from the current story", () => {
+  const story = "那封信没有寄件人，只有一句话：不要相信醒来后的自己。";
+  assert.equal(requirementFitsStory({ keyword: "信", twist: "信里的某个细节被重新读出不同含义。" }, story), true);
+  assert.equal(requirementFitsStory({ keyword: "龙骨", twist: "神秘气息让真相浮现。" }, story), false);
 });
 
 test("local ending fallback uses current story details", async () => {

@@ -84,6 +84,23 @@ function setFormBusy(form, busy, label = "处理中…") {
   });
 }
 
+async function withButtonPending(button, label, task) {
+  if (!button || button.disabled) return;
+  const originalText = button.textContent;
+  button.textContent = label;
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  try {
+    await task();
+  } finally {
+    if (button.isConnected) {
+      button.textContent = originalText;
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+    }
+  }
+}
+
 function connect(code) {
   if (state.eventSource) state.eventSource.close();
   saveRoomCode(code);
@@ -450,48 +467,56 @@ function renderLobby() {
 
   document.querySelectorAll("[data-style]").forEach((button) => {
     button.addEventListener("click", async () => {
-      try {
-        await api.post(`/api/rooms/${room.code}/vote-style`, actionBody({ storyStyle: button.dataset.style }));
-        setError("");
-      } catch (error) {
-        setError(error.message);
-      }
+      await withButtonPending(button, "投票中…", async () => {
+        try {
+          await api.post(`/api/rooms/${room.code}/vote-style`, actionBody({ storyStyle: button.dataset.style }));
+          setError("");
+        } catch (error) {
+          setError(error.message);
+        }
+      });
     });
   });
 
   if (isHost()) {
-    document.querySelector("#saveSettings").addEventListener("click", async () => {
-      try {
-        await api.post(`/api/rooms/${room.code}/settings`, actionBody({
-          wordLimit: Number(document.querySelector("#wordLimit").value),
-          maxRounds: Number(document.querySelector("#maxRounds").value),
-          timeLimit: document.querySelector("#timeLimit").value,
-          enableAIBridge: document.querySelector("#enableAIBridge").checked,
-          enableAIEnding: document.querySelector("#enableAIEnding").checked
-        }));
-        setError("");
-      } catch (error) {
-        setError(error.message);
-      }
+    document.querySelector("#saveSettings").addEventListener("click", async (event) => {
+      await withButtonPending(event.currentTarget, "保存中…", async () => {
+        try {
+          await api.post(`/api/rooms/${room.code}/settings`, actionBody({
+            wordLimit: Number(document.querySelector("#wordLimit").value),
+            maxRounds: Number(document.querySelector("#maxRounds").value),
+            timeLimit: document.querySelector("#timeLimit").value,
+            enableAIBridge: document.querySelector("#enableAIBridge").checked,
+            enableAIEnding: document.querySelector("#enableAIEnding").checked
+          }));
+          setError("");
+        } catch (error) {
+          setError(error.message);
+        }
+      });
     });
-    document.querySelector("#startGame").addEventListener("click", async () => {
-      try {
-        await api.post(`/api/rooms/${room.code}/start`, actionBody());
-        setError("");
-      } catch (error) {
-        setError(error.message);
-      }
+    document.querySelector("#startGame").addEventListener("click", async (event) => {
+      await withButtonPending(event.currentTarget, "生成开头中…", async () => {
+        try {
+          await api.post(`/api/rooms/${room.code}/start`, actionBody());
+          setError("");
+        } catch (error) {
+          setError(error.message);
+        }
+      });
     });
   } else {
-    document.querySelector("#readyToggle").addEventListener("click", async () => {
-      try {
-        await api.post(`/api/rooms/${room.code}/ready`, actionBody({ ready: !state.player.ready }));
-        state.player.ready = !state.player.ready;
-        savePlayer(state.player);
-        setError("");
-      } catch (error) {
-        setError(error.message);
-      }
+    document.querySelector("#readyToggle").addEventListener("click", async (event) => {
+      await withButtonPending(event.currentTarget, "同步中…", async () => {
+        try {
+          await api.post(`/api/rooms/${room.code}/ready`, actionBody({ ready: !state.player.ready }));
+          state.player.ready = !state.player.ready;
+          savePlayer(state.player);
+          setError("");
+        } catch (error) {
+          setError(error.message);
+        }
+      });
     });
   }
 }
@@ -545,8 +570,21 @@ function renderOpeningSelection() {
 
   document.querySelectorAll("[data-opening]").forEach((button) => {
     button.addEventListener("click", async () => {
+      await withButtonPending(button, "投票中…", async () => {
+        try {
+          await api.post(`/api/rooms/${state.room.code}/vote-opening`, actionBody({ openingId: button.dataset.opening }));
+          setError("");
+        } catch (error) {
+          setError(error.message);
+        }
+      });
+    });
+  });
+
+  document.querySelector("#chooseOpening")?.addEventListener("click", async (event) => {
+    await withButtonPending(event.currentTarget, "准备第一题…", async () => {
       try {
-        await api.post(`/api/rooms/${state.room.code}/vote-opening`, actionBody({ openingId: button.dataset.opening }));
+        await api.post(`/api/rooms/${state.room.code}/choose-opening`, actionBody({ openingId: votedId }));
         setError("");
       } catch (error) {
         setError(error.message);
@@ -554,22 +592,15 @@ function renderOpeningSelection() {
     });
   });
 
-  document.querySelector("#chooseOpening")?.addEventListener("click", async () => {
-    try {
-      await api.post(`/api/rooms/${state.room.code}/choose-opening`, actionBody({ openingId: votedId }));
-      setError("");
-    } catch (error) {
-      setError(error.message);
-    }
-  });
-
-  document.querySelector("#rerollOpenings")?.addEventListener("click", async () => {
-    try {
-      await api.post(`/api/rooms/${state.room.code}/reroll-openings`, actionBody({ vote: !hasRerollVoted }));
-      setError("");
-    } catch (error) {
-      setError(error.message);
-    }
+  document.querySelector("#rerollOpenings")?.addEventListener("click", async (event) => {
+    await withButtonPending(event.currentTarget, "处理中…", async () => {
+      try {
+        await api.post(`/api/rooms/${state.room.code}/reroll-openings`, actionBody({ vote: !hasRerollVoted }));
+        setError("");
+      } catch (error) {
+        setError(error.message);
+      }
+    });
   });
 }
 
@@ -822,54 +853,64 @@ function renderPlaying() {
       updateWordCounter(room);
     });
     bindPolishActions();
-    document.querySelector("#endingVote")?.addEventListener("click", async () => {
-      try {
-        const hasVoted = (room.endVotes || []).includes(state.player?.id);
-        await api.post(`/api/rooms/${room.code}/vote-ending`, actionBody({ vote: !hasVoted }));
-        setError("");
-      } catch (error) {
-        setError(error.message);
-      }
+    document.querySelector("#endingVote")?.addEventListener("click", async (event) => {
+      await withButtonPending(event.currentTarget, "同步中…", async () => {
+        try {
+          const hasVoted = (room.endVotes || []).includes(state.player?.id);
+          await api.post(`/api/rooms/${room.code}/vote-ending`, actionBody({ vote: !hasVoted }));
+          setError("");
+        } catch (error) {
+          setError(error.message);
+        }
+      });
     });
-    document.querySelector("#requirementVote")?.addEventListener("click", async () => {
-      try {
-        const hasVoted = (room.requirementRerollVotes || []).includes(state.player?.id);
-        await api.post(`/api/rooms/${room.code}/reroll-requirement`, actionBody({ vote: !hasVoted }));
-        state.polish = null;
-        setError("");
-      } catch (error) {
-        setError(error.message);
-      }
+    document.querySelector("#requirementVote")?.addEventListener("click", async (event) => {
+      await withButtonPending(event.currentTarget, "换题中…", async () => {
+        try {
+          const hasVoted = (room.requirementRerollVotes || []).includes(state.player?.id);
+          await api.post(`/api/rooms/${room.code}/reroll-requirement`, actionBody({ vote: !hasVoted }));
+          state.polish = null;
+          setError("");
+        } catch (error) {
+          setError(error.message);
+        }
+      });
     });
-    document.querySelector("#submitSegment").addEventListener("click", async () => {
-      try {
-        await api.post(`/api/rooms/${room.code}/submit-segment`, actionBody({ text: state.draft }));
-        clearDraftAssist();
-        setError("");
-      } catch (error) {
-        setError(error.message);
-      }
+    document.querySelector("#submitSegment").addEventListener("click", async (event) => {
+      await withButtonPending(event.currentTarget, "提交中…", async () => {
+        try {
+          await api.post(`/api/rooms/${room.code}/submit-segment`, actionBody({ text: state.draft }));
+          clearDraftAssist();
+          setError("");
+        } catch (error) {
+          setError(error.message);
+        }
+      });
     });
   }
 
   if (!draft) {
-    document.querySelector("#endingVote")?.addEventListener("click", async () => {
-      try {
-        const hasVoted = (room.endVotes || []).includes(state.player?.id);
-        await api.post(`/api/rooms/${room.code}/vote-ending`, actionBody({ vote: !hasVoted }));
-        setError("");
-      } catch (error) {
-        setError(error.message);
-      }
+    document.querySelector("#endingVote")?.addEventListener("click", async (event) => {
+      await withButtonPending(event.currentTarget, "同步中…", async () => {
+        try {
+          const hasVoted = (room.endVotes || []).includes(state.player?.id);
+          await api.post(`/api/rooms/${room.code}/vote-ending`, actionBody({ vote: !hasVoted }));
+          setError("");
+        } catch (error) {
+          setError(error.message);
+        }
+      });
     });
-    document.querySelector("#requirementVote")?.addEventListener("click", async () => {
-      try {
-        const hasVoted = (room.requirementRerollVotes || []).includes(state.player?.id);
-        await api.post(`/api/rooms/${room.code}/reroll-requirement`, actionBody({ vote: !hasVoted }));
-        setError("");
-      } catch (error) {
-        setError(error.message);
-      }
+    document.querySelector("#requirementVote")?.addEventListener("click", async (event) => {
+      await withButtonPending(event.currentTarget, "换题中…", async () => {
+        try {
+          const hasVoted = (room.requirementRerollVotes || []).includes(state.player?.id);
+          await api.post(`/api/rooms/${room.code}/reroll-requirement`, actionBody({ vote: !hasVoted }));
+          setError("");
+        } catch (error) {
+          setError(error.message);
+        }
+      });
     });
   }
 }
@@ -903,22 +944,26 @@ function renderEnding() {
     </section>
   `);
 
-  document.querySelector("#generateEnding")?.addEventListener("click", async () => {
-    try {
-      await api.post(`/api/rooms/${state.room.code}/generate-ending`, actionBody());
-      setError("");
-    } catch (error) {
-      setError(error.message);
-    }
+  document.querySelector("#generateEnding")?.addEventListener("click", async (event) => {
+    await withButtonPending(event.currentTarget, "生成中…", async () => {
+      try {
+        await api.post(`/api/rooms/${state.room.code}/generate-ending`, actionBody());
+        setError("");
+      } catch (error) {
+        setError(error.message);
+      }
+    });
   });
 
-  document.querySelector("#continueRound")?.addEventListener("click", async () => {
-    try {
-      await api.post(`/api/rooms/${state.room.code}/continue-round`, actionBody());
-      setError("");
-    } catch (error) {
-      setError(error.message);
-    }
+  document.querySelector("#continueRound")?.addEventListener("click", async (event) => {
+    await withButtonPending(event.currentTarget, "继续中…", async () => {
+      try {
+        await api.post(`/api/rooms/${state.room.code}/continue-round`, actionBody());
+        setError("");
+      } catch (error) {
+        setError(error.message);
+      }
+    });
   });
 
   document.querySelector("#copyShareLink")?.addEventListener("click", async () => {
