@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { aiQualityGuardsForTest } from "../src/aiHost.js";
 
-const { ensureChineseText, isMostlyChinese, isValidChineseOpening, sanitizePolishedSegment } = aiQualityGuardsForTest;
+const { ensureChineseText, isMostlyChinese, isNaturalKeyword, isValidChineseOpening, sanitizePolishedSegment } =
+  aiQualityGuardsForTest;
 
 test("rejects English story openings", () => {
   assert.equal(isValidChineseOpening("The letter arrived at midnight, and everyone screamed."), false);
@@ -20,4 +21,10 @@ test("keeps Chinese story text and removes polish explanations", () => {
     sanitizePolishedSegment("镜子里多出了一封没有署名的信。\n\n说明：这一段更明确。"),
     "镜子里多出了一封没有署名的信。"
   );
+});
+
+test("keeps requirement keywords short and natural", () => {
+  assert.equal(isNaturalKeyword("镜子"), true);
+  assert.equal(isNaturalKeyword("一只突然出现的乌鸦"), false);
+  assert.equal(isNaturalKeyword("门锁，红光"), false);
 });

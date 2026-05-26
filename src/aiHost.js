@@ -3,6 +3,7 @@ import {
   emotionPool,
   endingPool,
   keywordPool,
+  naturalKeywordPool,
   openingPool,
   sample,
   takeRandom,
@@ -21,10 +22,11 @@ export async function createOpeningOptions(count = 3) {
 }
 
 export async function createRequirement(roundNumber, storyText = "") {
+  const fallbackRequirement = createFallbackRequirement(roundNumber, storyText);
   const aiRequirement = await generateJson({
     instructions:
-      "你是多人故事接龙游戏《故事接龙工坊》的主持人。请生成一组简体中文写作要求，必须适合中文短篇悬疑/奇幻故事接龙。禁止输出英文。只输出 JSON，不要解释。",
-    input: `当前轮数：${roundNumber}\n当前故事：${storyText || "故事刚开始。"}\n\n请输出 JSON：{"keyword":"一个中文具体名词","emotion":"一种中文情绪或氛围","twist":"一句中文剧情转折要求，以句号结尾"}。所有字段都必须是中文。`,
+      "你是多人故事接龙游戏《故事接龙工坊》的主持人。请生成一组简体中文写作要求，必须适合中文短篇悬疑/奇幻故事接龙。关键词要自然、容易嵌入当前剧情，优先使用故事里已出现或很容易出现的意象，不要突然指定违和的动物、稀有物品或过于具体的道具。禁止输出英文。只输出 JSON，不要解释。",
+    input: `当前轮数：${roundNumber}\n当前故事：${storyText || "故事刚开始。"}\n\n请输出 JSON：{"keyword":"一个1到4字的中文自然关键词","emotion":"一种中文情绪或氛围","twist":"一句中文剧情转折要求，以句号结尾"}。所有字段都必须是中文。关键词要能自然放进下一段，不要太突兀。`,
     fallback: null
   });
 
@@ -35,7 +37,8 @@ export async function createRequirement(roundNumber, storyText = "") {
     typeof aiRequirement.twist === "string" &&
     isMostlyChinese(aiRequirement.keyword, 0.7) &&
     isMostlyChinese(aiRequirement.emotion, 0.7) &&
-    isMostlyChinese(aiRequirement.twist, 0.6)
+    isMostlyChinese(aiRequirement.twist, 0.6) &&
+    isNaturalKeyword(aiRequirement.keyword)
   ) {
     return {
       id: `req_${Math.random().toString(36).slice(2, 10)}`,
@@ -46,13 +49,23 @@ export async function createRequirement(roundNumber, storyText = "") {
     };
   }
 
+  return fallbackRequirement;
+}
+
+function createFallbackRequirement(roundNumber, storyText = "") {
   return {
     id: `req_${Math.random().toString(36).slice(2, 10)}`,
     roundNumber,
-    keyword: sample(keywordPool),
+    keyword: chooseNaturalKeyword(storyText),
     emotion: sample(emotionPool),
     twist: sample(twistPool)
   };
+}
+
+function chooseNaturalKeyword(storyText = "") {
+  const present = [...naturalKeywordPool, ...keywordPool].filter((keyword) => storyText.includes(keyword));
+  if (present.length) return sample(present);
+  return sample(naturalKeywordPool);
 }
 
 export async function createBridgeSegment(storyText = "") {
@@ -285,10 +298,18 @@ function isValidChineseOpening(text) {
   return true;
 }
 
+function isNaturalKeyword(keyword) {
+  const cleaned = String(keyword || "").trim();
+  if (cleaned.length < 1 || cleaned.length > 4) return false;
+  if (/[，。！？、；：\s]/.test(cleaned)) return false;
+  return true;
+}
+
 export const aiQualityGuardsForTest = {
   ensureChineseText,
   isMostlyChinese,
   isValidChineseOpening,
+  isNaturalKeyword,
   sanitizePolishedSegment
 };
 

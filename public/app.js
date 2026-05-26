@@ -371,6 +371,10 @@ function renderLobby() {
 
 function renderOpeningSelection() {
   const votedId = state.room.openingOptions.find((option) => option.votes.includes(state.player?.id))?.id;
+  const rerollVotes = state.room.openingRerollVotes || [];
+  const rerollNeeded = Math.floor(state.room.players.length / 2) + 1;
+  const hasRerollVoted = rerollVotes.includes(state.player?.id);
+  const rerollNames = rerollVotes.map(playerName).join("、");
   layout(`
     <section class="panel stack">
       <div class="row">
@@ -394,11 +398,21 @@ function renderOpeningSelection() {
           ? `
             <div class="row">
               <button id="chooseOpening">确定开头</button>
-              <button id="rerollOpenings" class="secondary" type="button">换一批开头</button>
             </div>
           `
           : `<p class="muted">投票后等待房主确定。</p>`
       }
+      <div class="vote-box stack">
+        <div class="row">
+          <strong>重抽开头投票</strong>
+          <span class="pill">${rerollVotes.length} / ${rerollNeeded}</span>
+        </div>
+        <p class="muted">觉得这批开头不够合适，可以投票换一批。超过半数同意后自动重抽，并清空开头票数。</p>
+        ${rerollNames ? `<p class="muted">已投票：${escapeHtml(rerollNames)}</p>` : ""}
+        <button id="rerollOpenings" class="${hasRerollVoted ? "secondary" : "warning"}" type="button">
+          ${hasRerollVoted ? "撤回重抽投票" : "投票换一批开头"}
+        </button>
+      </div>
     </section>
   `);
 
@@ -424,7 +438,7 @@ function renderOpeningSelection() {
 
   document.querySelector("#rerollOpenings")?.addEventListener("click", async () => {
     try {
-      await api.post(`/api/rooms/${state.room.code}/reroll-openings`, actionBody());
+      await api.post(`/api/rooms/${state.room.code}/reroll-openings`, actionBody({ vote: !hasRerollVoted }));
       setError("");
     } catch (error) {
       setError(error.message);

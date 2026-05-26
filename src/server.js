@@ -62,6 +62,7 @@ function loadEnvFile(path) {
 
 function publicRoom(room) {
   return {
+    openingRerollVotes: [],
     ...room,
     clients: undefined
   };
@@ -201,6 +202,7 @@ function createRoom({ name, settings }) {
     enableAIEnding: settings?.enableAIEnding !== false,
     openingOptions: [],
     selectedOpeningId: null,
+    openingRerollVotes: [],
     currentRequirement: null,
     endVotes: [],
     turnIndex: 0,
@@ -228,6 +230,11 @@ async function refreshOpeningOptions(room) {
     votes: []
   }));
   room.selectedOpeningId = null;
+  room.openingRerollVotes = [];
+}
+
+function neededVotes(room) {
+  return Math.floor(room.players.length / 2) + 1;
 }
 
 async function handleApi(req, res) {
@@ -352,9 +359,18 @@ async function handleApi(req, res) {
       }
 
       if (req.method === "POST" && action === "reroll-openings") {
-        if (playerId !== room.hostId) return sendJson(res, 403, { error: "只有房主可以重抽开头。" });
+        if (!room.players.some((player) => player.id === playerId)) {
+          return sendJson(res, 404, { error: "玩家不存在。" });
+        }
         if (room.status !== "selecting_opening") return sendJson(res, 409, { error: "当前不能重抽开头。" });
-        await refreshOpeningOptions(room);
+
+        room.openingRerollVotes = (room.openingRerollVotes || []).filter((id) => id !== playerId);
+        if (body.vote !== false) room.openingRerollVotes.push(playerId);
+
+        if (room.openingRerollVotes.length >= neededVotes(room)) {
+          await refreshOpeningOptions(room);
+        }
+
         await saveAndBroadcast(room);
         sendJson(res, 200, { room: publicRoom(room) });
         return;
@@ -384,6 +400,7 @@ async function handleApi(req, res) {
         room.turnIndex = 0;
         room.playerTurnsCompleted = 0;
         room.endVotes = [];
+        room.openingRerollVotes = [];
         room.currentRound = 1;
         room.currentTurnPlayerId = room.players[0].id;
         room.currentRequirement = await createRequirement(1, getRoomStoryText(room));
@@ -401,8 +418,7 @@ async function handleApi(req, res) {
         room.endVotes = (room.endVotes || []).filter((id) => id !== playerId);
         if (body.vote !== false) room.endVotes.push(playerId);
 
-        const needed = Math.floor(room.players.length / 2) + 1;
-        if (room.endVotes.length >= needed) {
+        if (room.endVotes.length >= neededVotes(room)) {
           room.status = "ending";
           room.currentTurnPlayerId = null;
           room.currentRequirement = null;
