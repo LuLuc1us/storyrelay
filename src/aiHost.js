@@ -1,5 +1,6 @@
 import {
   bridgePool,
+  contextualBridgeBeats,
   emotionPool,
   endingPool,
   keywordPool,
@@ -42,7 +43,8 @@ export async function createRequirement(roundNumber, storyText = "", storyStyle 
     isMostlyChinese(aiRequirement.emotion, 0.7) &&
     isMostlyChinese(aiRequirement.twist, 0.6) &&
     isNaturalKeyword(aiRequirement.keyword) &&
-    requirementFitsStory(aiRequirement, storyText, storyStyle)
+    requirementFitsStory(aiRequirement, storyText, storyStyle) &&
+    emotionFitsStory(aiRequirement.emotion, storyText, storyStyle)
   ) {
     return {
       id: `req_${Math.random().toString(36).slice(2, 10)}`,
@@ -69,15 +71,27 @@ function createFallbackRequirement(roundNumber, storyText = "", storyStyle = "su
 function chooseNaturalKeyword(storyText = "", storyStyle = "suspense") {
   const style = getStyleProfile(storyStyle);
   const present = getContextualKeywords(storyText, storyStyle);
-  if (present.length) return sample(present);
+  if (present.length) {
+    const preferred = present.filter((keyword) => (contextKeywordPreference[getDominantStoryContext(storyText)] || []).includes(keyword));
+    return sample((preferred.length ? preferred : present).slice(0, 3));
+  }
   if (style.openingHints?.length) return sample([...naturalKeywordPool, ...style.openingHints]);
   return sample(naturalKeywordPool);
 }
 
+const contextKeywordPreference = {
+  letter: ["信", "信件", "信箱", "收件人", "邮局", "明信片", "来信", "纸"],
+  memory: ["照片", "旧照片", "合照", "相册", "影像", "视频", "录音", "电影", "银幕"],
+  space: ["门", "房间", "地下室", "车站", "街", "地图", "钥匙", "入口", "楼道"],
+  time: ["钟", "手表", "时间", "明天", "昨天", "凌晨"],
+  reflection: ["镜子", "玻璃", "影子", "反光", "倒影", "画"],
+  signal: ["电台", "名单", "播音", "手机", "屏幕", "档案", "系统"]
+};
+
 function getContextualKeywords(storyText = "", storyStyle = "suspense") {
   const style = getStyleProfile(storyStyle);
   const story = String(storyText || "");
-  const discovered = [
+  const candidates = [
     ...naturalKeywordPool,
     ...keywordPool,
     ...(style.openingHints || []),
@@ -95,17 +109,27 @@ function getContextualKeywords(storyText = "", storyStyle = "suspense") {
     "箱子",
     "便利店",
     "货架"
-  ].filter((keyword) => story.includes(keyword));
+  ];
 
   const anchor = pickAnchorPhrase(story);
-  if (anchor && anchor.length <= 4) discovered.push(anchor);
-  return [...new Set(discovered)].filter(isNaturalKeyword);
+  if (anchor && anchor.length <= 4) candidates.push(anchor);
+
+  const discovered = [...new Set(candidates)]
+    .filter((keyword) => story.includes(keyword) && isNaturalKeyword(keyword))
+    .map((keyword) => ({ keyword, score: story.lastIndexOf(keyword) }))
+    .sort((a, b) => b.score - a.score || b.keyword.length - a.keyword.length)
+    .map((item) => item.keyword);
+
+  return discovered;
 }
 
 function chooseContextualEmotion(storyText = "", storyStyle = "suspense") {
   const story = String(storyText || "");
-  if (/信|旧照片|毕业|母亲|爷爷|葬礼|十年前/.test(story)) return sample(["怀念", "不安", "释然", "温暖"]);
-  if (/门|镜子|午夜|失踪|名单|声音|电台/.test(story)) return sample(["紧张", "恐惧", "压抑", "不安"]);
+  const context = getDominantStoryContext(story);
+  if (context === "letter" || context === "memory") return sample(["怀念", "不安", "释然", "温暖"]);
+  if (context === "space" || context === "reflection" || context === "time" || context === "signal") {
+    return sample(["紧张", "恐惧", "压抑", "不安", "好奇"]);
+  }
   if (storyStyle === "warm") return sample(["温暖", "怀念", "希望", "平静"]);
   if (storyStyle === "absurd") return sample(["荒诞", "混乱", "惊讶", "好奇"]);
   if (storyStyle === "fantasy") return sample(["好奇", "希望", "紧张", "惊讶"]);
@@ -113,19 +137,61 @@ function chooseContextualEmotion(storyText = "", storyStyle = "suspense") {
   return sample(emotionPool);
 }
 
+function emotionFitsStory(emotion = "", storyText = "", storyStyle = "suspense") {
+  if (!emotion) return true;
+  const allowedByStyle = {
+    suspense: ["恐惧", "压抑", "紧张", "孤独", "混乱", "平静", "惊讶", "悲伤", "好奇", "焦虑", "麻木", "不安", "怀念"],
+    fantasy: ["紧张", "希望", "混乱", "平静", "惊讶", "好奇", "兴奋", "不安", "温暖"],
+    warm: ["怀念", "温暖", "孤独", "希望", "平静", "悲伤", "释然", "好奇", "不安"],
+    absurd: ["荒诞", "混乱", "平静", "愤怒", "羞耻", "惊讶", "好奇", "焦虑", "麻木", "兴奋"],
+    sciFi: ["压抑", "紧张", "孤独", "希望", "混乱", "平静", "惊讶", "好奇", "焦虑", "麻木", "不安"]
+  };
+  const story = String(storyText || "");
+  const context = getDominantStoryContext(story);
+  if (context === "letter" || context === "memory") {
+    return ["怀念", "不安", "释然", "温暖", "悲伤", "平静", "孤独"].includes(emotion);
+  }
+  if (context === "space" || context === "reflection" || context === "time" || context === "signal") {
+    return ["紧张", "恐惧", "压抑", "不安", "惊讶", "好奇", "孤独", "平静"].includes(emotion);
+  }
+  return (allowedByStyle[storyStyle] || emotionPool).includes(emotion);
+}
+
 function chooseContextualTwist(storyText = "", storyStyle = "suspense") {
   const story = String(storyText || "");
   const matched = [];
-  if (/信|收件人|邮局|明信片/.test(story)) matched.push("信里的某个细节被重新读出不同含义。", "收件人发现地址并不是现在的住处。");
-  if (/照片|合照|影像|视频|录音/.test(story)) matched.push("画面里一个被忽略的细节突然变得重要。", "记录里出现了没人记得说过的话。");
-  if (/门|房间|地下室|车站|街|地图/.test(story)) matched.push("原本熟悉的地点出现了不该存在的入口。", "他们发现来时的路和记忆里不一样。");
-  if (/时间|明天|手表|钟|重复/.test(story)) matched.push("时间顺序里出现了一个对不上的空缺。", "角色发现自己已经经历过这一刻。");
-  if (/镜子|玻璃|影子/.test(story)) matched.push("倒影或影子做出了和本人不同的动作。", "一个看似普通的反光暴露了新的线索。");
+  const context = getDominantStoryContext(story);
+  if (context === "letter") matched.push("信里的某个细节被重新读出不同含义。", "收件人发现地址并不是现在的住处。");
+  if (context === "memory") matched.push("画面里一个被忽略的细节突然变得重要。", "记录里出现了没人记得说过的话。");
+  if (context === "space") matched.push("原本熟悉的地点出现了不该存在的入口。", "他们发现来时的路和记忆里不一样。");
+  if (context === "time") matched.push("时间顺序里出现了一个对不上的空缺。", "角色发现自己已经经历过这一刻。");
+  if (context === "reflection") matched.push("倒影或影子做出了和本人不同的动作。", "一个看似普通的反光暴露了新的线索。");
+  if (context === "signal") matched.push("一段记录里出现了没人记得说过的话。", "某个播报内容提前说出了下一步。");
   if (storyStyle === "warm") matched.push("一个善意的隐瞒被慢慢看见。", "旧物带出了一段被误会的往事。");
   if (storyStyle === "absurd") matched.push("所有人都把异常当成日常，只有一个人觉得不对。", "规则突然换了一种荒唐却明确的说法。");
   if (storyStyle === "fantasy") matched.push("一个不起眼的物件显出真正用途。", "前方的路回应了角色刚说出口的话。");
   if (storyStyle === "sciFi") matched.push("系统记录和角色记忆出现了细微冲突。", "一条提示来自尚未发生的时刻。");
   return sample(matched.length ? matched : twistPool);
+}
+
+function getDominantStoryContext(storyText = "") {
+  const story = String(storyText || "");
+  const contexts = [
+    { key: "letter", words: ["信件", "那封信", "信箱", "收件人", "邮局", "明信片", "来信", "信"] },
+    { key: "memory", words: ["照片", "旧照片", "合照", "相册", "影像", "视频", "录音", "电影", "银幕", "童年"] },
+    { key: "space", words: ["门", "房间", "地下室", "车站", "街", "地图", "钥匙", "入口", "楼道"] },
+    { key: "time", words: ["钟", "手表", "时间", "明天", "昨天", "凌晨", "重复", "十年前"] },
+    { key: "reflection", words: ["镜子", "玻璃", "影子", "反光", "倒影", "画"] },
+    { key: "signal", words: ["电台", "名单", "播音", "手机", "屏幕", "档案", "系统"] }
+  ];
+
+  return contexts
+    .map((context) => ({
+      key: context.key,
+      score: Math.max(...context.words.map((word) => story.lastIndexOf(word)))
+    }))
+    .filter((context) => context.score >= 0)
+    .sort((a, b) => b.score - a.score)[0]?.key || "";
 }
 
 function requirementFitsStory(requirement, storyText = "", storyStyle = "suspense") {
@@ -142,7 +208,7 @@ function requirementFitsStory(requirement, storyText = "", storyStyle = "suspens
 
 export async function createBridgeSegmentResult(storyText = "", storyStyle = "suspense") {
   const style = getStyleProfile(storyStyle);
-  const fallback = sample(bridgePool);
+  const fallback = createLocalBridgeFallback(storyText, storyStyle);
   const bridge = await generateText({
     instructions:
       `你是故事接龙游戏主持人。当前风格：${style.label}，${style.prompt}。请用简体中文写一段过渡段，帮助玩家故事更连贯。不要结束故事，不要否定玩家设定，不要抢走主角行动权。禁止输出英文。`,
@@ -183,6 +249,32 @@ export async function createEndingSegment(storyText = "", storyStyle = "suspense
 function getGenerationSourceLabel(rawText, fallback) {
   const usedProvider = getAIProvider() !== "local" && rawText && rawText !== fallback && ensureChineseText(rawText, fallback) !== fallback;
   return usedProvider ? "AI 主持人" : "工坊主持人";
+}
+
+function createLocalBridgeFallback(storyText = "", storyStyle = "suspense") {
+  const story = String(storyText || "");
+  const matched = contextualBridgeBeats
+    .map((entry) => ({
+      entry,
+      score: Math.max(...entry.match.map((word) => story.lastIndexOf(word)))
+    }))
+    .filter((item) => item.score >= 0)
+    .sort((a, b) => b.score - a.score)[0]?.entry;
+  if (matched) return sample(matched.beats);
+
+  const anchor = pickAnchorPhrase(story);
+  if (anchor) {
+    const styleTone = {
+      suspense: `关于${anchor}的线索并没有立刻解释自己。它只是安静地留在众人之间，让每一次停顿都显得更重。下一步无论怎么选，都像会碰到某个早已等在暗处的答案。`,
+      fantasy: `${anchor}像被故事轻轻点亮，露出一点原本藏住的方向。众人还没来得及弄清它真正指向哪里，周围的景象已经开始回应他们的迟疑。`,
+      warm: `${anchor}让气氛慢慢安静下来。那些没说完的话并没有消失，只是换成了更柔和的形状，等着下一个人把它接住。`,
+      absurd: `${anchor}暂时成为了所有人都无法忽视的问题。更麻烦的是，周围的人似乎已经接受了这一点，只有他们还在试图把事情讲明白。`,
+      sciFi: `关于${anchor}的记录出现了细微偏差。偏差很小，小到几乎可以被忽略，却刚好足够证明：当前的故事并不完全属于现在。`
+    };
+    return styleTone[storyStyle] || styleTone.suspense;
+  }
+
+  return sample(bridgePool);
 }
 
 function createLocalEndingFallback(storyText = "", storyStyle = "suspense") {
@@ -365,7 +457,7 @@ export async function polishSegment(text, requirement, storyText = "") {
     };
   }
 
-  let polished = normalizeText(text);
+  let polished = normalizeText(repairDictationText(text, requirement, storyText));
   polished = weaveTwist(polished, requirement?.twist);
   polished = weaveKeyword(polished, requirement?.keyword);
   polished = weaveEmotion(polished, requirement?.emotion);
@@ -381,6 +473,41 @@ export async function polishSegment(text, requirement, storyText = "") {
     polished,
     notes
   };
+}
+
+function repairDictationText(text = "", requirement, storyText = "") {
+  const classifiers = {
+    玻璃: "一片玻璃",
+    镜子: "一面镜子",
+    照片: "一张照片",
+    旧照片: "一张旧照片",
+    信: "一封信",
+    信件: "一封信件",
+    钥匙: "一把钥匙",
+    地图: "一张地图",
+    纸: "一张纸",
+    书: "一本书",
+    日记: "一本日记",
+    手表: "一块手表",
+    录音: "一段录音",
+    门锁: "一只门锁",
+    书页: "一页书页"
+  };
+  let repaired = String(text || "");
+  for (const [word, phrase] of Object.entries(classifiers)) {
+    repaired = repaired.replace(new RegExp(`(拿出|捡起|发现|看到)${escapeRegExp(word)}`, "g"), `$1${phrase}`);
+  }
+
+  if (requirement?.keyword && !repaired.includes(requirement.keyword)) {
+    const anchor = pickAnchorPhrase(storyText);
+    if (anchor && anchor.includes(requirement.keyword)) repaired += ` ${requirement.keyword}`;
+  }
+
+  return repaired
+    .replace(/翻来翻去/g, "反复翻看")
+    .replace(/回头看/g, "回头确认")
+    .replace(/不知道为什么/g, "说不清原因")
+    .replace(/那个东西/g, "那件东西");
 }
 
 function getStoryText(room) {
@@ -470,6 +597,7 @@ function isNaturalKeyword(keyword) {
 
 export const aiQualityGuardsForTest = {
   ensureChineseText,
+  emotionFitsStory,
   isMostlyChinese,
   isValidChineseOpening,
   isVagueOpening,

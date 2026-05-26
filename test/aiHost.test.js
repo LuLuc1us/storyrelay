@@ -4,6 +4,7 @@ import { aiQualityGuardsForTest, createEndingSegment } from "../src/aiHost.js";
 
 const {
   ensureChineseText,
+  emotionFitsStory,
   isMostlyChinese,
   isNaturalKeyword,
   isValidChineseOpening,
@@ -49,6 +50,12 @@ test("rejects requirements that drift away from the current story", () => {
   const story = "那封信没有寄件人，只有一句话：不要相信醒来后的自己。";
   assert.equal(requirementFitsStory({ keyword: "信", twist: "信里的某个细节被重新读出不同含义。" }, story), true);
   assert.equal(requirementFitsStory({ keyword: "龙骨", twist: "神秘气息让真相浮现。" }, story), false);
+});
+
+test("rejects emotions that fight the current story tone", () => {
+  const story = "博物馆闭馆后，最老的一幅画开始轻轻敲玻璃。";
+  assert.equal(emotionFitsStory("紧张", story, "suspense"), true);
+  assert.equal(emotionFitsStory("兴奋", story, "suspense"), false);
 });
 
 test("local ending fallback uses current story details", async () => {
