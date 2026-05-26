@@ -129,4 +129,12 @@ export SUPABASE_SERVICE_ROLE_KEY="你的 service_role key"
 export SUPABASE_ROOMS_TABLE="story_rooms"
 ```
 
+旧房间会自动整理：未开始的房间默认保留 12 小时，进行中的房间保留 72 小时，已完成故事保留 14 天。可以用这些环境变量调整：
+
+```bash
+ROOM_ABANDONED_LOBBY_HOURS=12
+ROOM_ACTIVE_RETENTION_HOURS=72
+ROOM_FINISHED_RETENTION_DAYS=14
+```
+
 先在 Supabase SQL Editor 运行 [supabase/schema.sql](/Users/lucius/Documents/Codex/2026-05-25/story-relay-1-2-3-ai/supabase/schema.sql)。不要把 `service_role key` 放到前端或 GitHub，它只应该放在 Render 的 Environment 里。

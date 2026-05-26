@@ -121,6 +121,12 @@ function connect(code) {
   state.eventSource = new EventSource(`/api/rooms/${code}/events`);
   state.eventSource.onmessage = (event) => {
     state.room = JSON.parse(event.data);
+    if (state.room?.deletedAt) {
+      clearSavedRoom();
+      history.replaceState(null, "", "/");
+      setError("这个房间已经被房主清理。");
+      return;
+    }
     render();
   };
   state.eventSource.onerror = () => {
@@ -450,6 +456,34 @@ function renderHostDiagnostics() {
   `;
 }
 
+function renderTitleTools(room) {
+  if (!isHost() || !room.story?.openingText) return "";
+  return `
+    <div class="title-tools">
+      <label>故事标题
+        <input id="storyTitleInput" maxlength="16" value="${escapeHtml(room.story.title || "")}" />
+      </label>
+      <div class="row">
+        <button id="saveStoryTitle" class="secondary" type="button">保存标题</button>
+        <button id="suggestStoryTitle" class="secondary" type="button">生成标题</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderRoomCleanup(room) {
+  if (!isHost()) return "";
+  return `
+    <div class="cleanup-box">
+      <div>
+        <strong>房间清理</strong>
+        <p class="muted">测试结束后可以清理这个房间，避免下次又恢复到旧局。</p>
+      </div>
+      <button id="deleteRoom" class="warning" type="button">清理房间</button>
+    </div>
+  `;
+}
+
 function renderLobby() {
   const room = state.room;
   layout(
@@ -500,6 +534,7 @@ function renderLobby() {
         <div class="panel stack wide-panel">
           ${renderHostDiagnostics()}
           ${renderStyleVote()}
+          ${renderRoomCleanup(room)}
           ${renderEventLog(6)}
         </div>
       </section>
@@ -529,6 +564,8 @@ function renderLobby() {
   document.querySelector("#refreshSystemStatus")?.addEventListener("click", async (event) => {
     await withButtonPending(event.currentTarget, "检查中…", loadSystemStatus);
   });
+
+  bindRoomCleanupAction();
 
   if (isHost() && !state.systemStatus && !state.systemStatusLoading) {
     loadSystemStatus();
@@ -707,6 +744,48 @@ function bindSystemSegmentActions() {
           setError(error.message);
         }
       });
+    });
+  });
+}
+
+function bindTitleActions() {
+  document.querySelector("#saveStoryTitle")?.addEventListener("click", async (event) => {
+    await withButtonPending(event.currentTarget, "保存中…", async () => {
+      try {
+        const title = document.querySelector("#storyTitleInput")?.value || "";
+        await api.post(`/api/rooms/${state.room.code}/rename-story`, actionBody({ title }));
+        setError("");
+      } catch (error) {
+        setError(error.message);
+      }
+    });
+  });
+
+  document.querySelector("#suggestStoryTitle")?.addEventListener("click", async (event) => {
+    await withButtonPending(event.currentTarget, "生成中…", async () => {
+      try {
+        await api.post(`/api/rooms/${state.room.code}/suggest-title`, actionBody());
+        setError("");
+      } catch (error) {
+        setError(error.message);
+      }
+    });
+  });
+}
+
+function bindRoomCleanupAction() {
+  document.querySelector("#deleteRoom")?.addEventListener("click", async (event) => {
+    const ok = window.confirm("确定清理这个房间吗？清理后房间码会失效，已导出的故事不受影响。");
+    if (!ok) return;
+    await withButtonPending(event.currentTarget, "清理中…", async () => {
+      try {
+        await api.post(`/api/rooms/${state.room.code}/delete-room`, actionBody());
+        clearSavedRoom();
+        history.replaceState(null, "", "/");
+        setError("");
+      } catch (error) {
+        setError(error.message);
+      }
     });
   });
 }
@@ -894,6 +973,7 @@ function renderPlaying() {
           <h2>${escapeHtml(room.story.title)}</h2>
           <span class="pill">第 ${room.currentRound} / ${room.maxRounds} 轮</span>
         </div>
+        ${renderTitleTools(room)}
         ${renderStory()}
       </div>
       <aside class="panel stack">
@@ -1008,6 +1088,8 @@ function renderPlaying() {
   }
 
   bindSystemSegmentActions();
+  bindTitleActions();
+  bindRoomCleanupAction();
 }
 
 function renderEnding() {
@@ -1019,6 +1101,7 @@ function renderEnding() {
           <h2>${escapeHtml(state.room.story.title)}</h2>
           <span class="pill">${state.room.status === "finished" ? "已完成" : "结尾阶段"}</span>
         </div>
+        ${renderTitleTools(state.room)}
         ${renderStory()}
       </div>
       <aside class="panel stack">
@@ -1035,6 +1118,7 @@ function renderEnding() {
         <label>分享阅读链接<input id="shareLink" readonly value="${escapeHtml(shareUrl)}" /></label>
         <button id="copyShareLink" class="secondary" type="button">复制分享链接</button>
         <a href="/api/rooms/${state.room.code}/export.md" download><button class="warning">导出 Markdown</button></a>
+        ${renderRoomCleanup(state.room)}
       </aside>
     </section>
   `);
@@ -1051,6 +1135,8 @@ function renderEnding() {
   });
 
   bindSystemSegmentActions();
+  bindTitleActions();
+  bindRoomCleanupAction();
 
   document.querySelector("#continueRound")?.addEventListener("click", async (event) => {
     await withButtonPending(event.currentTarget, "继续中…", async () => {

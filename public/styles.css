@@ -460,6 +460,43 @@ label {
   min-height: 34px;
 }
 
+.title-tools {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #ddcbb4;
+  border-radius: 8px;
+  background: #fbf7ef;
+  padding: 12px;
+}
+
+.title-tools .row {
+  justify-content: flex-start;
+}
+
+.title-tools button {
+  min-height: 34px;
+}
+
+.cleanup-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid #e2c3b4;
+  border-radius: 8px;
+  background: #fff7f1;
+  padding: 14px;
+}
+
+.cleanup-box p {
+  margin: 5px 0 0;
+  line-height: 1.55;
+}
+
+.cleanup-box button {
+  flex: 0 0 auto;
+}
+
 .style-vote h3 {
   margin: 0;
 }
@@ -593,6 +630,11 @@ label {
   }
 
   .resume-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .cleanup-box {
     align-items: stretch;
     flex-direction: column;
   }

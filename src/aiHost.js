@@ -24,6 +24,20 @@ export async function createOpeningOptions(count = 3, storyStyle = "suspense") {
   return createOpeningOptionsWithAI(count, storyStyle);
 }
 
+export async function createStoryTitle(storyText = "", storyStyle = "suspense") {
+  const style = getStyleProfile(storyStyle);
+  const fallback = createLocalStoryTitle(storyText, storyStyle);
+  const title = await generateText({
+    instructions:
+      `你是故事接龙游戏《故事接龙工坊》的标题编辑。当前风格：${style.label}，${style.prompt}。请给当前故事起一个简体中文标题。标题要像作品名，不要像说明句；不要用书名号；不要输出英文；不要超过10个中文字。`,
+    input: `当前故事：\n${storyText || "故事刚开始。"}\n\n只输出一个中文标题，不要解释。`,
+    fallback,
+    maxOutputTokens: 40
+  });
+  const cleaned = sanitizeStoryTitle(title);
+  return isValidStoryTitle(cleaned) ? cleaned : fallback;
+}
+
 export async function createRequirement(roundNumber, storyText = "", storyStyle = "suspense") {
   const style = getStyleProfile(storyStyle);
   const fallbackRequirement = createFallbackRequirement(roundNumber, storyText, storyStyle);
@@ -345,6 +359,42 @@ function getStyleProfile(storyStyle = "suspense") {
   return styleProfiles[storyStyle] || styleProfiles.suspense;
 }
 
+function createLocalStoryTitle(storyText = "", storyStyle = "suspense") {
+  const anchor = getContextualKeywords(storyText, storyStyle)[0] || pickAnchorPhrase(storyText);
+  if (anchor) {
+    const patterns = {
+      suspense: [`${anchor}之后`, `${anchor}回声`, `${anchor}背面`, `${anchor}未寄`],
+      fantasy: [`${anchor}之路`, `${anchor}尽头`, `${anchor}与门`, `${anchor}远行`],
+      warm: [`${anchor}小事`, `${anchor}余温`, `${anchor}来信`, `${anchor}仍在`],
+      absurd: [`${anchor}通知`, `${anchor}今日`, `${anchor}交错`, `${anchor}请确认`],
+      sciFi: [`${anchor}偏差`, `${anchor}记录`, `${anchor}回路`, `${anchor}未同步`]
+    };
+    return sample(patterns[storyStyle] || patterns.suspense).slice(0, 10);
+  }
+
+  return {
+    suspense: "未寄之夜",
+    fantasy: "雾后车站",
+    warm: "旧信仍暖",
+    absurd: "星期三上交",
+    sciFi: "明日回声"
+  }[storyStyle] || "故事接龙";
+}
+
+function sanitizeStoryTitle(title = "") {
+  return String(title || "")
+    .trim()
+    .replace(/^["“”《]+|["“”》]+$/g, "")
+    .replace(/^标题[:：]\s*/, "")
+    .replace(/[。！？!?，,：:；;\s]/g, "")
+    .slice(0, 12);
+}
+
+function isValidStoryTitle(title = "") {
+  const cleaned = String(title || "");
+  return cleaned.length >= 2 && cleaned.length <= 10 && isMostlyChinese(cleaned, 0.75) && !hasMetaExplanation(cleaned);
+}
+
 function escapeRegExp(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -623,9 +673,11 @@ function isNaturalKeyword(keyword) {
 
 export const aiQualityGuardsForTest = {
   cleanBridgeText,
+  createLocalStoryTitle,
   ensureChineseText,
   emotionFitsStory,
   isBridgeUsable,
+  isValidStoryTitle,
   isMostlyChinese,
   isValidChineseOpening,
   isVagueOpening,

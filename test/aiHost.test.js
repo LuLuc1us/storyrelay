@@ -4,9 +4,11 @@ import { aiQualityGuardsForTest, createEndingSegment } from "../src/aiHost.js";
 
 const {
   cleanBridgeText,
+  createLocalStoryTitle,
   ensureChineseText,
   emotionFitsStory,
   isBridgeUsable,
+  isValidStoryTitle,
   isMostlyChinese,
   isNaturalKeyword,
   isValidChineseOpening,
@@ -73,4 +75,10 @@ test("local ending fallback uses current story details", async () => {
   );
   assert.match(ending, /信|收件人|自己/);
   assert.equal(ending.includes("天亮时，一切看上去都回到了原处"), false);
+});
+
+test("local story titles use current story anchors", () => {
+  const title = createLocalStoryTitle("那封信没有寄件人，只有一句话：不要相信醒来后的自己。", "suspense");
+  assert.equal(isValidStoryTitle(title), true);
+  assert.match(title, /信|收件人|自己/);
 });

@@ -8,12 +8,13 @@ import {
   createEndingSegmentResult,
   createOpeningOptions,
   createRequirement,
+  createStoryTitle,
   checkAIConnection,
   getAIStatusSnapshot,
   getRoomStoryText,
   polishSegment
 } from "./aiHost.js";
-import { getStorageStatusSnapshot, restoreRooms, saveRoom } from "./storage.js";
+import { deleteRoom, getStorageStatusSnapshot, restoreRooms, saveRoom } from "./storage.js";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const publicDir = join(__dirname, "..", "public");
@@ -100,6 +101,14 @@ function broadcast(code) {
 async function saveAndBroadcast(room) {
   await saveRoom(publicRoom(room));
   broadcast(room.code);
+}
+
+async function deleteAndBroadcast(room) {
+  room.deletedAt = now();
+  broadcast(room.code);
+  const deleted = await deleteRoom(room.code);
+  if (!deleted) throw new Error("Supabase 暂时没有清理成功，请稍后再试。");
+  rooms.delete(room.code);
 }
 
 function removeStream(code, client) {
@@ -194,6 +203,20 @@ async function advanceTurn(room) {
   room.currentTurnPlayerId = room.players[room.turnIndex].id;
   room.currentRequirement = await createRequirement(room.currentRound, getRoomStoryText(room), room.storyStyle);
   room.requirementRerollVotes = [];
+}
+
+async function refreshStoryTitle(room, reason = "auto") {
+  if (!room?.story?.openingText) return;
+  const playerSegmentCount = room.story.segments.filter((segment) => segment.authorType === "player").length;
+  if (playerSegmentCount < 1 && reason !== "ending") return;
+  if (room.story.titleLocked) return;
+
+  const title = await createStoryTitle(getRoomStoryText(room), room.storyStyle);
+  if (title && title !== room.story.title) {
+    room.story.title = title;
+    room.story.titleSource = reason;
+    room.story.titleUpdatedAt = now();
+  }
 }
 
 function exportMarkdown(room) {
@@ -481,6 +504,7 @@ async function handleApi(req, res) {
         room.selectedOpeningId = picked.id;
         room.story.openingText = picked.text;
         room.story.title = picked.text.replace(/[，。！？：].*$/, "").slice(0, 18) || "故事接龙";
+        room.story.titleSource = "opening";
         room.status = "playing";
         room.turnIndex = 0;
         room.playerTurnsCompleted = 0;
@@ -541,6 +565,7 @@ async function handleApi(req, res) {
           requirement: room.currentRequirement
         });
         addRoomEvent(room, "story", `${player.name} 提交了第 ${room.currentRound} 轮段落。`, player.id);
+        await refreshStoryTitle(room, "story");
         await advanceTurn(room);
         await saveAndBroadcast(room);
         sendJson(res, 200, { room: publicRoom(room) });
@@ -597,9 +622,44 @@ async function handleApi(req, res) {
         }
         room.status = "finished";
         room.requirementRerollVotes = [];
+        await refreshStoryTitle(room, "ending");
         addRoomEvent(room, "story", "系统生成了最终结尾，故事完成。", playerId);
         await saveAndBroadcast(room);
         sendJson(res, 200, { room: publicRoom(room) });
+        return;
+      }
+
+      if (req.method === "POST" && action === "rename-story") {
+        if (playerId !== room.hostId) return sendJson(res, 403, { error: "只有房主可以修改标题。" });
+        const title = String(body.title || "").trim().replace(/^["“”《]+|["“”》]+$/g, "").slice(0, 16);
+        if (title.length < 2) return sendJson(res, 400, { error: "标题至少需要两个字。" });
+        room.story.title = title;
+        room.story.titleLocked = true;
+        room.story.titleSource = "host";
+        room.story.titleUpdatedAt = now();
+        addRoomEvent(room, "story", `${playerLabel(room, playerId)} 修改了故事标题。`, playerId);
+        await saveAndBroadcast(room);
+        sendJson(res, 200, { room: publicRoom(room) });
+        return;
+      }
+
+      if (req.method === "POST" && action === "suggest-title") {
+        if (playerId !== room.hostId) return sendJson(res, 403, { error: "只有房主可以生成标题。" });
+        room.story.title = await createStoryTitle(getRoomStoryText(room), room.storyStyle);
+        room.story.titleLocked = false;
+        room.story.titleSource = "suggested";
+        room.story.titleUpdatedAt = now();
+        addRoomEvent(room, "story", `${playerLabel(room, playerId)} 生成了新的故事标题。`, playerId);
+        await saveAndBroadcast(room);
+        sendJson(res, 200, { room: publicRoom(room) });
+        return;
+      }
+
+      if (req.method === "POST" && action === "delete-room") {
+        if (playerId !== room.hostId) return sendJson(res, 403, { error: "只有房主可以清理房间。" });
+        addRoomEvent(room, "room", `${playerLabel(room, playerId)} 清理了这个房间。`, playerId);
+        await deleteAndBroadcast(room);
+        sendJson(res, 200, { ok: true });
         return;
       }
 
