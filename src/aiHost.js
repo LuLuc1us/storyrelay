@@ -211,14 +211,16 @@ export async function createBridgeSegmentResult(storyText = "", storyStyle = "su
   const fallback = createLocalBridgeFallback(storyText, storyStyle);
   const bridge = await generateText({
     instructions:
-      `你是故事接龙游戏主持人。当前风格：${style.label}，${style.prompt}。请用简体中文写一段过渡段，帮助玩家故事更连贯。不要结束故事，不要否定玩家设定，不要抢走主角行动权。禁止输出英文。`,
-    input: `当前完整故事：\n${storyText}\n\n请写 80 到 150 个中文字的系统中间段。只输出中文段落正文，不要解释。`,
+      `你是故事接龙游戏主持人。当前风格：${style.label}，${style.prompt}。请用简体中文写一段过渡段，帮助玩家故事更连贯。要求：只接住最近2段的具体线索；少用抽象比喻；不要堆砌“无形、命运、世界、真相”等大词；不要结束故事，不要否定玩家设定，不要抢走主角行动权。禁止输出英文。`,
+    input: `当前完整故事：\n${storyText}\n\n请写 70 到 130 个中文字的系统中间段。只输出中文段落正文，不要解释。`,
     fallback,
-    maxOutputTokens: 220
+    maxOutputTokens: 170
   });
+  const cleanedBridge = cleanBridgeText(bridge);
+  const acceptedBridge = isBridgeUsable(cleanedBridge) ? cleanedBridge : fallback;
   return {
-    text: trimToLength(ensureChineseText(bridge, fallback), 180),
-    sourceLabel: getGenerationSourceLabel(bridge, fallback)
+    text: trimToLength(ensureChineseText(acceptedBridge, fallback), 160),
+    sourceLabel: getGenerationSourceLabel(acceptedBridge, fallback)
   };
 }
 
@@ -275,6 +277,24 @@ function createLocalBridgeFallback(storyText = "", storyStyle = "suspense") {
   }
 
   return sample(bridgePool);
+}
+
+function cleanBridgeText(text = "") {
+  return sanitizePolishedSegment(text)
+    .replace(/^\s*(过渡段|系统中间段|系统段落)[:：]\s*/, "")
+    .replace(/\s+/g, "")
+    .trim();
+}
+
+function isBridgeUsable(text = "") {
+  const cleaned = String(text || "");
+  if (!isMostlyChinese(cleaned, 0.55)) return false;
+  if (cleaned.length < 35 || cleaned.length > 180) return false;
+  if (hasMetaExplanation(cleaned)) return false;
+  if (/无形的钥匙|毫无共鸣|命运的齿轮|真相终于浮现|世界的背面|某种不可名状|无法言说的力量/.test(cleaned)) {
+    return false;
+  }
+  return true;
 }
 
 function createLocalEndingFallback(storyText = "", storyStyle = "suspense") {
@@ -596,8 +616,10 @@ function isNaturalKeyword(keyword) {
 }
 
 export const aiQualityGuardsForTest = {
+  cleanBridgeText,
   ensureChineseText,
   emotionFitsStory,
+  isBridgeUsable,
   isMostlyChinese,
   isValidChineseOpening,
   isVagueOpening,

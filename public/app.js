@@ -11,7 +11,9 @@ const state = {
   draft: "",
   polish: null,
   isPolishing: false,
-  pendingAction: ""
+  pendingAction: "",
+  systemStatus: null,
+  systemStatusLoading: false
 };
 
 const styleOptions = [
@@ -98,6 +100,18 @@ async function withButtonPending(button, label, task) {
       button.disabled = false;
       button.removeAttribute("aria-busy");
     }
+  }
+}
+
+async function loadSystemStatus() {
+  state.systemStatusLoading = true;
+  try {
+    state.systemStatus = await api.get("/api/health");
+  } catch (error) {
+    state.systemStatus = { ok: false, message: error.message };
+  } finally {
+    state.systemStatusLoading = false;
+    render();
   }
 }
 
@@ -403,6 +417,39 @@ function renderStyleVote() {
   `;
 }
 
+function renderHostDiagnostics() {
+  if (!isHost()) return "";
+  const status = state.systemStatus;
+  const aiLabel = status
+    ? status.ai
+      ? `AI 主持在线 · ${status.provider || "unknown"} / ${status.model || "unknown"}`
+      : "工坊主持模式"
+    : "尚未检查";
+  const storageLabel = status
+    ? status.storageReady
+      ? `${status.storage || "storage"} 已连接`
+      : "存储未连接"
+    : "尚未检查";
+  const lastError =
+    status?.lastError?.message ||
+    (typeof status?.storageLastError === "string" ? status.storageLastError : status?.storageLastError?.message) ||
+    status?.message ||
+    "";
+
+  return `
+    <div class="diagnostics">
+      <div class="row">
+        <strong>主持状态</strong>
+        <span class="pill">${state.systemStatusLoading ? "检查中" : aiLabel}</span>
+      </div>
+      <p class="muted">${storageLabel}${lastError ? ` · 最近提示：${escapeHtml(String(lastError).slice(0, 120))}` : ""}</p>
+      <button id="refreshSystemStatus" class="secondary" type="button">
+        ${state.systemStatusLoading ? "检查中…" : "刷新状态"}
+      </button>
+    </div>
+  `;
+}
+
 function renderLobby() {
   const room = state.room;
   layout(
@@ -451,6 +498,7 @@ function renderLobby() {
           }
         </div>
         <div class="panel stack wide-panel">
+          ${renderHostDiagnostics()}
           ${renderStyleVote()}
           ${renderEventLog(6)}
         </div>
@@ -477,6 +525,14 @@ function renderLobby() {
       });
     });
   });
+
+  document.querySelector("#refreshSystemStatus")?.addEventListener("click", async (event) => {
+    await withButtonPending(event.currentTarget, "检查中…", loadSystemStatus);
+  });
+
+  if (isHost() && !state.systemStatus && !state.systemStatusLoading) {
+    loadSystemStatus();
+  }
 
   if (isHost()) {
     document.querySelector("#saveSettings").addEventListener("click", async (event) => {
@@ -824,6 +880,7 @@ function renderPlaying() {
           ${renderRequirementRerollVote(room)}
           ${renderEndingVote(room)}
         </div>
+        ${renderHostDiagnostics()}
         ${
           isCurrentPlayer()
             ? `
@@ -842,6 +899,12 @@ function renderPlaying() {
   `);
 
   const draft = document.querySelector("#draft");
+  document.querySelector("#refreshSystemStatus")?.addEventListener("click", async (event) => {
+    await withButtonPending(event.currentTarget, "检查中…", loadSystemStatus);
+  });
+  if (isHost() && !state.systemStatus && !state.systemStatusLoading) {
+    loadSystemStatus();
+  }
   if (draft) {
     draft.addEventListener("input", (event) => {
       state.draft = event.target.value;

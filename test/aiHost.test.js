@@ -3,8 +3,10 @@ import assert from "node:assert/strict";
 import { aiQualityGuardsForTest, createEndingSegment } from "../src/aiHost.js";
 
 const {
+  cleanBridgeText,
   ensureChineseText,
   emotionFitsStory,
+  isBridgeUsable,
   isMostlyChinese,
   isNaturalKeyword,
   isValidChineseOpening,
@@ -38,6 +40,12 @@ test("keeps Chinese story text and removes polish explanations", () => {
     sanitizePolishedSegment("镜子里多出了一封没有署名的信。\n\n说明：这一段更明确。"),
     "镜子里多出了一封没有署名的信。"
   );
+});
+
+test("rejects overblown bridge narration", () => {
+  assert.equal(cleanBridgeText("系统中间段：那片玻璃停在桌上。"), "那片玻璃停在桌上。");
+  assert.equal(isBridgeUsable("脚步声停在身后，像一把无形的钥匙在寻找另一扇门。"), false);
+  assert.equal(isBridgeUsable("那片光亮安静地留在原处，把刚才发生的一切照得更清楚。可越清楚，越像有什么东西正从故事背面看回来。"), true);
 });
 
 test("keeps requirement keywords short and natural", () => {

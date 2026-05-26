@@ -428,6 +428,25 @@ label {
   padding: 14px;
 }
 
+.diagnostics {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #c6d5df;
+  border-radius: 8px;
+  background: var(--soft-blue);
+  padding: 14px;
+}
+
+.diagnostics p {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.diagnostics button {
+  width: fit-content;
+  min-height: 34px;
+}
+
 .style-vote h3 {
   margin: 0;
 }
