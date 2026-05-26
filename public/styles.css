@@ -132,6 +132,26 @@ label {
   align-items: start;
 }
 
+.reader-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 18px;
+  align-items: start;
+}
+
+.resume-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.resume-card h2,
+.resume-card p {
+  margin: 0;
+}
+
 .panel {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -332,8 +352,14 @@ label {
 @media (max-width: 860px) {
   .grid,
   .game-grid,
+  .reader-layout,
   .split {
     grid-template-columns: 1fr;
+  }
+
+  .resume-card {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .topbar {

@@ -1,8 +1,11 @@
 const app = document.querySelector("#app");
+const storyPathMatch = location.pathname.match(/^\/story\/([A-Z0-9]{5})\/?$/i);
 
 const state = {
   room: null,
   player: JSON.parse(localStorage.getItem("storyRelayPlayer") || "null"),
+  lastRoomCode: localStorage.getItem("storyRelayRoomCode") || "",
+  storyViewCode: storyPathMatch?.[1]?.toUpperCase() || "",
   eventSource: null,
   error: "",
   draft: "",
@@ -11,6 +14,12 @@ const state = {
 };
 
 const api = {
+  async get(path) {
+    const response = await fetch(path);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "操作失败。");
+    return data;
+  },
   async post(path, body = {}) {
     const response = await fetch(path, {
       method: "POST",
@@ -25,7 +34,14 @@ const api = {
 
 function savePlayer(player) {
   state.player = player;
+  state.lastRoomCode = player?.roomId || state.lastRoomCode;
   localStorage.setItem("storyRelayPlayer", JSON.stringify(player));
+  if (state.lastRoomCode) localStorage.setItem("storyRelayRoomCode", state.lastRoomCode);
+}
+
+function saveRoomCode(code) {
+  state.lastRoomCode = code;
+  localStorage.setItem("storyRelayRoomCode", code);
 }
 
 function setError(message) {
@@ -35,6 +51,7 @@ function setError(message) {
 
 function connect(code) {
   if (state.eventSource) state.eventSource.close();
+  saveRoomCode(code);
   state.eventSource = new EventSource(`/api/rooms/${code}/events`);
   state.eventSource.onmessage = (event) => {
     state.room = JSON.parse(event.data);
@@ -44,6 +61,49 @@ function connect(code) {
     state.error = "同步连接暂时断开，浏览器会自动重连。";
     render();
   };
+}
+
+async function resumeRoom(code = state.lastRoomCode) {
+  const normalizedCode = String(code || "").trim().toUpperCase();
+  if (!normalizedCode) return;
+  try {
+    const { room } = await api.get(`/api/rooms/${normalizedCode}`);
+    const playerStillInRoom = room.players.some((player) => player.id === state.player?.id);
+    if (!playerStillInRoom) {
+      localStorage.removeItem("storyRelayPlayer");
+      localStorage.removeItem("storyRelayRoomCode");
+      state.player = null;
+      state.lastRoomCode = "";
+      state.room = null;
+      renderHome();
+      return;
+    }
+    state.room = room;
+    connect(room.code);
+    setError("");
+  } catch (error) {
+    localStorage.removeItem("storyRelayRoomCode");
+    state.lastRoomCode = "";
+    setError(error.message);
+  }
+}
+
+async function openStoryView(code = state.storyViewCode) {
+  const normalizedCode = String(code || "").trim().toUpperCase();
+  if (!normalizedCode) return;
+  try {
+    const { room } = await api.get(`/api/rooms/${normalizedCode}`);
+    state.room = room;
+    state.storyViewCode = normalizedCode;
+    if (state.eventSource) state.eventSource.close();
+    setError("");
+  } catch (error) {
+    setError(error.message);
+  }
+}
+
+function storyShareUrl(code) {
+  return `${location.origin}/story/${code}`;
 }
 
 function escapeHtml(value = "") {
@@ -94,7 +154,21 @@ function layout(content, toolbar = "") {
 }
 
 function renderHome() {
+  const resumeCard =
+    state.lastRoomCode && !state.storyViewCode
+      ? `
+        <section class="panel resume-card">
+          <div>
+            <h2>继续上次房间</h2>
+            <p class="muted">找到本机最近进入的房间 ${escapeHtml(state.lastRoomCode)}。</p>
+          </div>
+          <button id="resumeRoom" type="button">继续</button>
+        </section>
+      `
+      : "";
+
   layout(`
+    ${resumeCard}
     <section class="grid">
       <form class="panel stack" id="createForm">
         <h2>创建房间</h2>
@@ -136,6 +210,10 @@ function renderHome() {
     </section>
   `);
 
+  document.querySelector("#resumeRoom")?.addEventListener("click", () => {
+    resumeRoom();
+  });
+
   document.querySelector("#createForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -152,6 +230,7 @@ function renderHome() {
       });
       state.room = room;
       savePlayer(player);
+      history.replaceState(null, "", "/");
       connect(room.code);
       setError("");
     } catch (error) {
@@ -169,6 +248,7 @@ function renderHome() {
       });
       state.room = room;
       savePlayer(player);
+      history.replaceState(null, "", "/");
       connect(room.code);
       setError("");
     } catch (error) {
@@ -248,6 +328,7 @@ function renderLobby() {
 
   document.querySelector("#leave").addEventListener("click", () => {
     localStorage.removeItem("storyRelayPlayer");
+    localStorage.removeItem("storyRelayRoomCode");
     location.reload();
   });
 
@@ -356,6 +437,49 @@ function renderStory() {
         .join("")}
     </div>
   `;
+}
+
+function renderStoryView() {
+  const room = state.room;
+  const title = room?.story?.title || "故事接龙";
+  layout(
+    `
+      <section class="reader-layout">
+        <div class="panel stack">
+          <div class="row">
+            <h2>${escapeHtml(title)}</h2>
+            <span class="pill">房间 ${escapeHtml(room.code)}</span>
+          </div>
+          <p class="muted">参与玩家：${escapeHtml(room.players.map((player) => player.name).join("、") || "暂无")}</p>
+          ${renderStory()}
+        </div>
+        <aside class="panel stack">
+          <h3>分享故事</h3>
+          <label>阅读链接<input id="shareLink" readonly value="${escapeHtml(storyShareUrl(room.code))}" /></label>
+          <button id="copyShareLink" type="button">复制链接</button>
+          <a href="/api/rooms/${room.code}/export.md" download><button class="warning" type="button">导出 Markdown</button></a>
+          <button id="backHome" class="secondary" type="button">回到首页</button>
+        </aside>
+      </section>
+    `,
+    `<button class="secondary" id="homeLink" type="button">首页</button>`
+  );
+
+  const goHome = () => {
+    state.room = null;
+    state.storyViewCode = "";
+    history.replaceState(null, "", "/");
+    renderHome();
+  };
+
+  document.querySelector("#copyShareLink")?.addEventListener("click", async () => {
+    const link = storyShareUrl(room.code);
+    await navigator.clipboard?.writeText(link);
+    const input = document.querySelector("#shareLink");
+    input?.select();
+  });
+  document.querySelector("#backHome")?.addEventListener("click", goHome);
+  document.querySelector("#homeLink")?.addEventListener("click", goHome);
 }
 
 function renderRequirement() {
@@ -557,6 +681,7 @@ function renderPlaying() {
 }
 
 function renderEnding() {
+  const shareUrl = storyShareUrl(state.room.code);
   layout(`
     <section class="game-grid">
       <div class="panel stack">
@@ -577,6 +702,8 @@ function renderEnding() {
             `
             : `<p class="success">故事已经完成。</p>`
         }
+        <label>分享阅读链接<input id="shareLink" readonly value="${escapeHtml(shareUrl)}" /></label>
+        <button id="copyShareLink" class="secondary" type="button">复制分享链接</button>
         <a href="/api/rooms/${state.room.code}/export.md" download><button class="warning">导出 Markdown</button></a>
       </aside>
     </section>
@@ -599,9 +726,27 @@ function renderEnding() {
       setError(error.message);
     }
   });
+
+  document.querySelector("#copyShareLink")?.addEventListener("click", async () => {
+    await navigator.clipboard?.writeText(shareUrl);
+    document.querySelector("#shareLink")?.select();
+  });
 }
 
 function render() {
+  if (state.storyViewCode) {
+    if (state.room) renderStoryView();
+    else {
+      layout(`
+        <section class="panel stack">
+          <h2>正在打开故事</h2>
+          <p class="muted">如果房间码不存在，稍后这里会显示错误提示。</p>
+        </section>
+      `);
+    }
+    return;
+  }
+
   const activeDraft = document.activeElement?.id === "draft";
   const draftElement = activeDraft ? document.querySelector("#draft") : null;
   const draftSelection = draftElement
@@ -635,4 +780,12 @@ function render() {
   }
 }
 
-render();
+if (state.storyViewCode) {
+  render();
+  openStoryView();
+} else if (state.player?.roomId || state.lastRoomCode) {
+  render();
+  resumeRoom(state.player?.roomId || state.lastRoomCode);
+} else {
+  render();
+}

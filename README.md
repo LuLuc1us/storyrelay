@@ -80,6 +80,8 @@ export OPENAI_MODEL="gpt-5.2"
 - 游戏中可投票进入结尾，超过半数同意后收束故事
 - 达到最大轮数后进入结尾阶段
 - 生成系统结尾
+- 刷新或重新打开网页后，可继续本机上次进入的房间
+- 完成页提供可分享阅读链接 `/story/房间码`
 - 导出完整故事为 Markdown
 - `/api/health` 健康检查接口，方便线上部署平台检测服务状态
 - `/api/ai-check` AI 连接检查接口，用来确认 Gemini/OpenRouter/OpenAI key 真的可调用

@@ -267,6 +267,14 @@ async function handleApi(req, res) {
       return;
     }
 
+    const roomRead = req.url.match(/^\/api\/rooms\/([A-Z0-9]+)$/);
+    if (req.method === "GET" && roomRead) {
+      const room = rooms.get(roomRead[1]);
+      if (!room) return sendJson(res, 404, { error: "房间不存在。" });
+      sendJson(res, 200, { room: publicRoom(room) });
+      return;
+    }
+
     const roomAction = req.url.match(/^\/api\/rooms\/([A-Z0-9]+)\/(.+)$/);
     if (roomAction) {
       const [, code, action] = roomAction;
@@ -483,8 +491,9 @@ async function handleStatic(req, res) {
   const path = req.url === "/" ? "/index.html" : decodeURIComponent(req.url.split("?")[0]);
   const safePath = path.replace(/\.\./g, "");
   try {
-    const file = await readFile(join(publicDir, safePath));
-    res.writeHead(200, { "Content-Type": mimeTypes[extname(safePath)] || "application/octet-stream" });
+    const staticPath = extname(safePath) ? safePath : "/index.html";
+    const file = await readFile(join(publicDir, staticPath));
+    res.writeHead(200, { "Content-Type": mimeTypes[extname(staticPath)] || "application/octet-stream" });
     res.end(file);
   } catch {
     res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
