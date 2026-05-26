@@ -96,8 +96,8 @@ async function createOpeningOptionsWithAI(count) {
   const fallbackOptions = takeRandom(openingPool, count);
   const text = await generateText({
     instructions:
-      "你是故事接龙游戏主持人。请生成简体中文故事开头，适合多人继续创作。每个开头要有悬念，但不要过长。禁止输出英文。",
-    input: `请生成 ${count} 个不同的中文故事开头。每行一个，不要编号，不要解释，不要英文。`,
+      "你是故事接龙游戏主持人。请生成简体中文故事开头，适合多人继续创作。每个开头必须是具体场景陈述句，有清楚的人、地点、物件或事件。不要写成谜语、宣传语、问题、设定简介或“一个……的……”模板。禁止输出英文、拼音和任何拉丁字母。",
+    input: `请生成 ${count} 个不同的中文故事开头。每行一个，不要编号，不要解释，不要英文。句式要多样，尽量像“凌晨三点，整座城市的钟同时停在了同一秒。”这种具体陈述句。`,
     fallback: fallbackOptions.join("\n"),
     maxOutputTokens: 260
   });
@@ -293,9 +293,27 @@ function ensureChineseText(text, fallback) {
 function isValidChineseOpening(text) {
   const cleaned = String(text || "").trim();
   if (cleaned.length < 12 || cleaned.length > 90) return false;
+  if ((cleaned.match(LATIN_RE) || []).length > 0) return false;
   if (!isMostlyChinese(cleaned, 0.55)) return false;
   if (hasMetaExplanation(cleaned)) return false;
+  if (isVagueOpening(cleaned)) return false;
   return true;
+}
+
+function isVagueOpening(text) {
+  return [
+    /^一个[^，。！？]{0,18}的[^，。！？]{1,18}[，。]/,
+    /^一段[^，。！？]{0,18}的/,
+    /^某个/,
+    /^某种/,
+    /^某人/,
+    /^传说有/,
+    /^古老的[^，。！？]{0,12}中，传说/,
+    /whoever/i,
+    /遇到谜题/,
+    /等待着某人的发现/,
+    /失落的宝藏/
+  ].some((pattern) => pattern.test(text));
 }
 
 function isNaturalKeyword(keyword) {
@@ -309,6 +327,7 @@ export const aiQualityGuardsForTest = {
   ensureChineseText,
   isMostlyChinese,
   isValidChineseOpening,
+  isVagueOpening,
   isNaturalKeyword,
   sanitizePolishedSegment
 };

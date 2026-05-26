@@ -2,12 +2,25 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { aiQualityGuardsForTest } from "../src/aiHost.js";
 
-const { ensureChineseText, isMostlyChinese, isNaturalKeyword, isValidChineseOpening, sanitizePolishedSegment } =
-  aiQualityGuardsForTest;
+const {
+  ensureChineseText,
+  isMostlyChinese,
+  isNaturalKeyword,
+  isValidChineseOpening,
+  isVagueOpening,
+  sanitizePolishedSegment
+} = aiQualityGuardsForTest;
 
 test("rejects English story openings", () => {
   assert.equal(isValidChineseOpening("The letter arrived at midnight, and everyone screamed."), false);
+  assert.equal(isValidChineseOpening("一个阴云密布的夜晚，whoever 遇到谜题。"), false);
   assert.equal(isValidChineseOpening("凌晨三点，整座城市的钟同时停在了同一秒。"), true);
+});
+
+test("rejects vague riddle-like opening templates", () => {
+  assert.equal(isVagueOpening("一个阴云密布的夜晚，隐藏着某人的秘密。"), true);
+  assert.equal(isVagueOpening("古老的森林中，传说有一间失落的宝藏。"), true);
+  assert.equal(isValidChineseOpening("停电后的第十分钟，楼道里的感应灯自己亮了起来。"), true);
 });
 
 test("falls back when generated text is not mostly Chinese", () => {
