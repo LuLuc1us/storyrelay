@@ -219,6 +219,17 @@ function createRoom({ name, settings }) {
   return { room, player: host };
 }
 
+async function refreshOpeningOptions(room) {
+  const openingTexts = await createOpeningOptions(3);
+  room.openingOptions = openingTexts.map((text) => ({
+    id: uid("opening"),
+    roomId: room.code,
+    text,
+    votes: []
+  }));
+  room.selectedOpeningId = null;
+}
+
 async function handleApi(req, res) {
   try {
     if (req.method === "GET" && req.url === "/api/health") {
@@ -333,14 +344,17 @@ async function handleApi(req, res) {
       if (req.method === "POST" && action === "start") {
         if (playerId !== room.hostId) return sendJson(res, 403, { error: "只有房主可以开始游戏。" });
         if (room.players.length < 2) return sendJson(res, 409, { error: "至少需要2名玩家。" });
-        const openingTexts = await createOpeningOptions(3);
-        room.openingOptions = openingTexts.map((text) => ({
-          id: uid("opening"),
-          roomId: code,
-          text,
-          votes: []
-        }));
+        await refreshOpeningOptions(room);
         room.status = "selecting_opening";
+        await saveAndBroadcast(room);
+        sendJson(res, 200, { room: publicRoom(room) });
+        return;
+      }
+
+      if (req.method === "POST" && action === "reroll-openings") {
+        if (playerId !== room.hostId) return sendJson(res, 403, { error: "只有房主可以重抽开头。" });
+        if (room.status !== "selecting_opening") return sendJson(res, 409, { error: "当前不能重抽开头。" });
+        await refreshOpeningOptions(room);
         await saveAndBroadcast(room);
         sendJson(res, 200, { room: publicRoom(room) });
         return;

@@ -391,7 +391,12 @@ function renderOpeningSelection() {
       </div>
       ${
         isHost()
-          ? `<button id="chooseOpening">确定开头</button>`
+          ? `
+            <div class="row">
+              <button id="chooseOpening">确定开头</button>
+              <button id="rerollOpenings" class="secondary" type="button">换一批开头</button>
+            </div>
+          `
           : `<p class="muted">投票后等待房主确定。</p>`
       }
     </section>
@@ -411,6 +416,15 @@ function renderOpeningSelection() {
   document.querySelector("#chooseOpening")?.addEventListener("click", async () => {
     try {
       await api.post(`/api/rooms/${state.room.code}/choose-opening`, actionBody({ openingId: votedId }));
+      setError("");
+    } catch (error) {
+      setError(error.message);
+    }
+  });
+
+  document.querySelector("#rerollOpenings")?.addEventListener("click", async () => {
+    try {
+      await api.post(`/api/rooms/${state.room.code}/reroll-openings`, actionBody());
       setError("");
     } catch (error) {
       setError(error.message);

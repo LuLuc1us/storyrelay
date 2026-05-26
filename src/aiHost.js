@@ -13,6 +13,8 @@ let lastAIError = null;
 
 const OPENROUTER_DEFAULT_MODEL = "openrouter/free";
 const OPENROUTER_FALLBACK_MODELS = [OPENROUTER_DEFAULT_MODEL, "meta-llama/llama-3.2-3b-instruct:free"];
+const CHINESE_RE = /[\u3400-\u9fff]/g;
+const LATIN_RE = /[A-Za-z]/g;
 
 export async function createOpeningOptions(count = 3) {
   return createOpeningOptionsWithAI(count);
@@ -21,8 +23,8 @@ export async function createOpeningOptions(count = 3) {
 export async function createRequirement(roundNumber, storyText = "") {
   const aiRequirement = await generateJson({
     instructions:
-      "你是多人故事接龙游戏《故事接龙工坊》的主持人。请生成一组写作要求，必须适合中文短篇悬疑/奇幻故事接龙。只输出 JSON，不要解释。",
-    input: `当前轮数：${roundNumber}\n当前故事：${storyText || "故事刚开始。"}\n\n请输出 JSON：{"keyword":"一个具体名词","emotion":"一种情绪或氛围","twist":"一句剧情转折要求，以句号结尾"}`,
+      "你是多人故事接龙游戏《故事接龙工坊》的主持人。请生成一组简体中文写作要求，必须适合中文短篇悬疑/奇幻故事接龙。禁止输出英文。只输出 JSON，不要解释。",
+    input: `当前轮数：${roundNumber}\n当前故事：${storyText || "故事刚开始。"}\n\n请输出 JSON：{"keyword":"一个中文具体名词","emotion":"一种中文情绪或氛围","twist":"一句中文剧情转折要求，以句号结尾"}。所有字段都必须是中文。`,
     fallback: null
   });
 
@@ -30,7 +32,10 @@ export async function createRequirement(roundNumber, storyText = "") {
     aiRequirement &&
     typeof aiRequirement.keyword === "string" &&
     typeof aiRequirement.emotion === "string" &&
-    typeof aiRequirement.twist === "string"
+    typeof aiRequirement.twist === "string" &&
+    isMostlyChinese(aiRequirement.keyword, 0.7) &&
+    isMostlyChinese(aiRequirement.emotion, 0.7) &&
+    isMostlyChinese(aiRequirement.twist, 0.6)
   ) {
     return {
       id: `req_${Math.random().toString(36).slice(2, 10)}`,
@@ -51,41 +56,44 @@ export async function createRequirement(roundNumber, storyText = "") {
 }
 
 export async function createBridgeSegment(storyText = "") {
+  const fallback = sample(bridgePool);
   const bridge = await generateText({
     instructions:
-      "你是故事接龙游戏主持人。请写一段中文过渡段，帮助玩家故事更连贯。不要结束故事，不要否定玩家设定，不要抢走主角行动权。",
-    input: `当前完整故事：\n${storyText}\n\n请写 80 到 150 字的系统中间段。只输出段落正文。`,
-    fallback: sample(bridgePool),
+      "你是故事接龙游戏主持人。请用简体中文写一段过渡段，帮助玩家故事更连贯。不要结束故事，不要否定玩家设定，不要抢走主角行动权。禁止输出英文。",
+    input: `当前完整故事：\n${storyText}\n\n请写 80 到 150 个中文字的系统中间段。只输出中文段落正文，不要解释。`,
+    fallback,
     maxOutputTokens: 220
   });
-  return trimToLength(bridge, 180);
+  return trimToLength(ensureChineseText(bridge, fallback), 180);
 }
 
 export async function createEndingSegment(storyText = "") {
+  const fallback = sample(endingPool);
   const ending = await generateText({
     instructions:
-      "你是故事接龙游戏主持人。请根据完整故事写一个有余味的中文结尾。不要解释太多，保留一点开放感。",
-    input: `完整故事：\n${storyText}\n\n请写 150 到 250 字的最终结尾。只输出结尾正文。`,
-    fallback: sample(endingPool),
+      "你是故事接龙游戏主持人。请根据完整故事写一个有余味的简体中文结尾。不要解释太多，保留一点开放感。禁止输出英文。",
+    input: `完整故事：\n${storyText}\n\n请写 150 到 250 个中文字的最终结尾。只输出中文结尾正文，不要解释。`,
+    fallback,
     maxOutputTokens: 360
   });
-  return trimToLength(ending, 300);
+  return trimToLength(ensureChineseText(ending, fallback), 300);
 }
 
 async function createOpeningOptionsWithAI(count) {
+  const fallbackOptions = takeRandom(openingPool, count);
   const text = await generateText({
     instructions:
-      "你是故事接龙游戏主持人。请生成中文故事开头，适合多人继续创作。每个开头要有悬念，但不要过长。",
-    input: `请生成 ${count} 个不同的故事开头。每行一个，不要编号，不要解释。`,
-    fallback: takeRandom(openingPool, count).join("\n"),
+      "你是故事接龙游戏主持人。请生成简体中文故事开头，适合多人继续创作。每个开头要有悬念，但不要过长。禁止输出英文。",
+    input: `请生成 ${count} 个不同的中文故事开头。每行一个，不要编号，不要解释，不要英文。`,
+    fallback: fallbackOptions.join("\n"),
     maxOutputTokens: 260
   });
   const lines = text
     .split("\n")
     .map((line) => line.replace(/^[-*\d.、\s]+/, "").trim())
-    .filter(Boolean)
+    .filter((line) => isValidChineseOpening(line))
     .slice(0, count);
-  return lines.length >= count ? lines : takeRandom(openingPool, count);
+  return lines.length >= count ? lines : fallbackOptions;
 }
 
 function escapeRegExp(text) {
@@ -190,7 +198,11 @@ export async function polishSegment(text, requirement, storyText = "") {
   });
 
   const cleanedAIPolished = sanitizePolishedSegment(aiPolished);
-  if (cleanedAIPolished && (!requirement?.keyword || cleanedAIPolished.includes(requirement.keyword))) {
+  if (
+    cleanedAIPolished &&
+    isMostlyChinese(cleanedAIPolished, 0.45) &&
+    (!requirement?.keyword || cleanedAIPolished.includes(requirement.keyword))
+  ) {
     return {
       original: text,
       polished: trimToLength(ensureSentence(cleanedAIPolished), 220),
@@ -240,6 +252,45 @@ function trimToLength(text, maxLength) {
   if (cleaned.length <= maxLength) return cleaned;
   return `${cleaned.slice(0, maxLength - 1)}…`;
 }
+
+function chineseRatio(text) {
+  const cleaned = String(text || "").replace(/\s+/g, "");
+  const chineseCount = (cleaned.match(CHINESE_RE) || []).length;
+  const latinCount = (cleaned.match(LATIN_RE) || []).length;
+  const signalCount = chineseCount + latinCount;
+  if (!signalCount) return 0;
+  return chineseCount / signalCount;
+}
+
+function isMostlyChinese(text, minimumRatio = 0.5) {
+  const cleaned = String(text || "").trim();
+  return Boolean(cleaned) && chineseRatio(cleaned) >= minimumRatio;
+}
+
+function hasMetaExplanation(text) {
+  return /^(Here|Sure|Okay|The|This)\b/i.test(String(text || "").trim()) || /润色说明|修改说明|优化说明/.test(text);
+}
+
+function ensureChineseText(text, fallback) {
+  const cleaned = sanitizePolishedSegment(text);
+  if (isMostlyChinese(cleaned, 0.45) && !hasMetaExplanation(cleaned)) return cleaned;
+  return fallback;
+}
+
+function isValidChineseOpening(text) {
+  const cleaned = String(text || "").trim();
+  if (cleaned.length < 12 || cleaned.length > 90) return false;
+  if (!isMostlyChinese(cleaned, 0.55)) return false;
+  if (hasMetaExplanation(cleaned)) return false;
+  return true;
+}
+
+export const aiQualityGuardsForTest = {
+  ensureChineseText,
+  isMostlyChinese,
+  isValidChineseOpening,
+  sanitizePolishedSegment
+};
 
 function sanitizePolishedSegment(text) {
   let cleaned = String(text || "")
