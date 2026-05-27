@@ -13,7 +13,9 @@ const state = {
   isPolishing: false,
   pendingAction: "",
   systemStatus: null,
-  systemStatusLoading: false
+  systemStatusLoading: false,
+  connectionStatus: "idle",
+  draftRestoredKey: ""
 };
 
 const styleOptions = [
@@ -59,12 +61,15 @@ function clearSavedRoom() {
   if (state.eventSource) state.eventSource.close();
   localStorage.removeItem("storyRelayPlayer");
   localStorage.removeItem("storyRelayRoomCode");
+  clearSavedDrafts();
   state.player = null;
   state.room = null;
   state.lastRoomCode = "";
   state.draft = "";
   state.polish = null;
   state.isPolishing = false;
+  state.connectionStatus = "idle";
+  state.draftRestoredKey = "";
 }
 
 function setError(message) {
@@ -118,8 +123,15 @@ async function loadSystemStatus() {
 function connect(code) {
   if (state.eventSource) state.eventSource.close();
   saveRoomCode(code);
+  state.connectionStatus = "connecting";
   state.eventSource = new EventSource(`/api/rooms/${code}/events`);
+  state.eventSource.onopen = () => {
+    state.connectionStatus = "online";
+    if (state.error === "同步连接暂时断开，浏览器会自动重连。") state.error = "";
+    render();
+  };
   state.eventSource.onmessage = (event) => {
+    state.connectionStatus = "online";
     state.room = JSON.parse(event.data);
     if (state.room?.deletedAt) {
       clearSavedRoom();
@@ -130,6 +142,7 @@ function connect(code) {
     render();
   };
   state.eventSource.onerror = () => {
+    state.connectionStatus = "reconnecting";
     state.error = "同步连接暂时断开，浏览器会自动重连。";
     render();
   };
@@ -209,11 +222,53 @@ function clearDraftAssist() {
   state.isPolishing = false;
 }
 
+function draftKey(room = state.room) {
+  if (!room || !state.player?.id || !room.currentTurnPlayerId) return "";
+  return `storyRelayDraft:${room.code}:${state.player.id}:${room.currentRound}:${room.currentTurnPlayerId}`;
+}
+
+function saveDraftToDevice() {
+  const key = draftKey();
+  if (!key) return;
+  const value = state.draft.trim() ? state.draft : "";
+  if (value) localStorage.setItem(key, value);
+  else localStorage.removeItem(key);
+}
+
+function restoreDraftForCurrentTurn(room) {
+  const key = draftKey(room);
+  if (!key || state.draft || state.draftRestoredKey === key) return;
+  const saved = localStorage.getItem(key);
+  if (saved) {
+    state.draft = saved;
+    state.draftRestoredKey = key;
+  }
+}
+
+function clearCurrentDraft() {
+  const key = draftKey();
+  if (key) localStorage.removeItem(key);
+  state.draftRestoredKey = "";
+  clearDraftAssist();
+}
+
+function clearSavedDrafts() {
+  for (const key of Object.keys(localStorage)) {
+    if (key.startsWith("storyRelayDraft:")) localStorage.removeItem(key);
+  }
+}
+
 function actionBody(extra = {}) {
   return { ...extra, playerId: state.player?.id };
 }
 
 function layout(content, toolbar = "") {
+  const connectionLabel = {
+    idle: "",
+    connecting: "连接中",
+    online: "已同步",
+    reconnecting: "重连中"
+  }[state.connectionStatus] || "";
   app.innerHTML = `
     <div class="shell">
       <header class="topbar">
@@ -222,7 +277,10 @@ function layout(content, toolbar = "") {
           <h1>故事接龙工坊</h1>
           <span>多人轮流写作游戏 · 投票开局 · AI 主持</span>
         </div>
-        <div class="toolbar">${toolbar}</div>
+        <div class="toolbar">
+          ${connectionLabel ? `<span class="connection ${state.connectionStatus}">${connectionLabel}</span>` : ""}
+          ${toolbar}
+        </div>
       </header>
       ${state.error ? `<div class="panel error">${escapeHtml(state.error)}</div>` : ""}
       ${content}
@@ -441,6 +499,10 @@ function renderHostDiagnostics() {
     (typeof status?.storageLastError === "string" ? status.storageLastError : status?.storageLastError?.message) ||
     status?.message ||
     "";
+  const lastGeneration = status?.lastGeneration;
+  const generationLine = lastGeneration
+    ? `最近生成：${lastGeneration.action || "AI 生成"} · ${lastGeneration.sourceLabel || "主持人"} · ${Math.round(lastGeneration.durationMs || 0)}ms`
+    : "最近生成：暂无记录";
 
   return `
     <div class="diagnostics">
@@ -449,6 +511,7 @@ function renderHostDiagnostics() {
         <span class="pill">${state.systemStatusLoading ? "检查中" : aiLabel}</span>
       </div>
       <p class="muted">${storageLabel}${lastError ? ` · 最近提示：${escapeHtml(String(lastError).slice(0, 120))}` : ""}</p>
+      <p class="muted">${escapeHtml(generationLine)}</p>
       <button id="refreshSystemStatus" class="secondary" type="button">
         ${state.systemStatusLoading ? "检查中…" : "刷新状态"}
       </button>
@@ -952,6 +1015,7 @@ function bindPolishActions() {
       draft.value = state.draft;
       draft.focus();
     }
+    saveDraftToDevice();
     updateWordCounter(state.room);
     refreshPolishArea();
   });
@@ -965,6 +1029,11 @@ function bindPolishActions() {
 
 function renderPlaying() {
   const room = state.room;
+  if (isCurrentPlayer()) {
+    restoreDraftForCurrentTurn(room);
+  } else if (state.draft || state.polish || state.isPolishing) {
+    clearDraftAssist();
+  }
   const remaining = room.wordLimit - state.draft.length;
   layout(`
     <section class="game-grid">
@@ -999,6 +1068,7 @@ function renderPlaying() {
               </label>
               <div id="wordCounter" class="${remaining < 0 ? "error" : "muted"}">${state.draft.length} / ${room.wordLimit} 字</div>
               <div id="polishArea">${renderPolishPanel()}</div>
+              <p class="draft-hint">${draftKey(room) && localStorage.getItem(draftKey(room)) ? "草稿已保存在这台设备上。" : "输入会自动保存在这台设备上。"}</p>
               <button id="submitSegment">提交段落</button>
             `
             : `<p class="muted">等待当前玩家写作中。</p>`
@@ -1018,6 +1088,7 @@ function renderPlaying() {
   if (draft) {
     draft.addEventListener("input", (event) => {
       state.draft = event.target.value;
+      saveDraftToDevice();
       if (state.polish?.original !== state.draft) {
         state.polish = null;
         state.isPolishing = false;
@@ -1053,7 +1124,7 @@ function renderPlaying() {
       await withButtonPending(event.currentTarget, "提交中…", async () => {
         try {
           await api.post(`/api/rooms/${room.code}/submit-segment`, actionBody({ text: state.draft }));
-          clearDraftAssist();
+          clearCurrentDraft();
           setError("");
         } catch (error) {
           setError(error.message);

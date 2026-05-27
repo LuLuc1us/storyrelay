@@ -14,11 +14,13 @@ import {
 } from "./content.js";
 
 let lastAIError = null;
+let lastGeneration = null;
 
 const OPENROUTER_DEFAULT_MODEL = "openrouter/free";
 const OPENROUTER_FALLBACK_MODELS = [OPENROUTER_DEFAULT_MODEL, "meta-llama/llama-3.2-3b-instruct:free"];
 const CHINESE_RE = /[\u3400-\u9fff]/g;
 const LATIN_RE = /[A-Za-z]/g;
+const DEFAULT_AI_TIMEOUT_MS = 12000;
 
 export async function createOpeningOptions(count = 3, storyStyle = "suspense") {
   return createOpeningOptionsWithAI(count, storyStyle);
@@ -28,6 +30,7 @@ export async function createStoryTitle(storyText = "", storyStyle = "suspense") 
   const style = getStyleProfile(storyStyle);
   const fallback = createLocalStoryTitle(storyText, storyStyle);
   const title = await generateText({
+    action: "故事标题",
     instructions:
       `你是故事接龙游戏《故事接龙工坊》的标题编辑。当前风格：${style.label}，${style.prompt}。请给当前故事起一个简体中文标题。标题要像作品名，不要像说明句；不要用书名号；不要输出英文；不要超过10个中文字。`,
     input: `当前故事：\n${storyText || "故事刚开始。"}\n\n只输出一个中文标题，不要解释。`,
@@ -42,6 +45,7 @@ export async function createRequirement(roundNumber, storyText = "", storyStyle 
   const style = getStyleProfile(storyStyle);
   const fallbackRequirement = createFallbackRequirement(roundNumber, storyText, storyStyle);
   const aiRequirement = await generateJson({
+    action: "写作要求",
     instructions:
       `你是多人故事接龙游戏《故事接龙工坊》的主持人。请生成一组简体中文写作要求，必须接住当前故事，而不是突然换题材。当前风格：${style.label}，${style.prompt}。关键词优先取自故事里已经出现的物件、地点、人物关系或相近意象；如果故事刚开始，就选日常、自然、好写的词。转折要像一条可继续写的剧情提示，不要写晦涩谜语，不要指定违和动物、稀有物品或过于具体的道具。禁止输出英文。只输出 JSON，不要解释。`,
     input: `当前轮数：${roundNumber}\n当前故事：${storyText || "故事刚开始。"}\n\n请输出 JSON：{"keyword":"一个1到4字的中文自然关键词","emotion":"一种中文情绪或氛围","twist":"一句中文剧情转折要求，以句号结尾"}。所有字段都必须是中文。关键词要能自然放进下一段，转折要和当前故事已有线索有关。`,
@@ -230,6 +234,7 @@ export async function createBridgeSegmentResult(storyText = "", storyStyle = "su
   const style = getStyleProfile(storyStyle);
   const fallback = createLocalBridgeFallback(storyText, storyStyle);
   const bridge = await generateText({
+    action: tone === "balanced" ? "系统中间段" : `系统中间段-${tone}`,
     instructions:
       `你是故事接龙游戏主持人。当前风格：${style.label}，${style.prompt}。请用简体中文写一段过渡段，帮助玩家故事更连贯。${toneInstruction(tone)}要求：只接住最近2段的具体线索；少用抽象比喻；不要堆砌“无形、命运、世界、真相”等大词；不要结束故事，不要否定玩家设定，不要抢走主角行动权。禁止输出英文。`,
     input: `当前完整故事：\n${storyText}\n\n请写 70 到 130 个中文字的系统中间段。只输出中文段落正文，不要解释。`,
@@ -252,6 +257,7 @@ export async function createEndingSegmentResult(storyText = "", storyStyle = "su
   const style = getStyleProfile(storyStyle);
   const fallback = createLocalEndingFallback(storyText, storyStyle);
   const ending = await generateText({
+    action: tone === "balanced" ? "系统结尾" : `系统结尾-${tone}`,
     instructions:
       `你是故事接龙游戏主持人。当前风格：${style.label}，${style.prompt}。请根据完整故事写一个有余味的简体中文结尾。${toneInstruction(tone)}不要解释太多，保留一点开放感。禁止输出英文。`,
     input: `完整故事：\n${storyText}\n\n请写 150 到 250 个中文字的最终结尾。只输出中文结尾正文，不要解释。`,
@@ -341,6 +347,7 @@ async function createOpeningOptionsWithAI(count, storyStyle = "suspense") {
   const style = getStyleProfile(storyStyle);
   const fallbackOptions = takeRandom(styleOpeningPools[storyStyle] || openingPool, count);
   const text = await generateText({
+    action: "故事开头",
     instructions:
       `你是故事接龙游戏主持人。当前风格：${style.label}，${style.prompt}。请生成简体中文故事开头，适合多人继续创作。每个开头必须是具体场景陈述句，有清楚的人、地点、物件或事件。不要写成谜语、宣传语、问题、设定简介或“一个……的……”模板。禁止输出英文、拼音和任何拉丁字母。`,
     input: `请生成 ${count} 个不同的中文故事开头。每行一个，不要编号，不要解释，不要英文。句式要多样，尽量像“凌晨三点，整座城市的钟同时停在了同一秒。”这种具体陈述句。`,
@@ -509,6 +516,7 @@ function weaveTwist(text, twist) {
 
 export async function polishSegment(text, requirement, storyText = "") {
   const aiPolished = await generateText({
+    action: "段落润色",
     instructions:
       "你是故事接龙游戏里的中文编辑助手。玩家原文可能来自语音识别，可能有错字、断句错误、同音误识别或表达含混。请先根据上下文理解玩家想表达的剧情，再把它整理成更明确、更顺、更可读的一小段中文。必须保留玩家原意、人物行动和剧情事实，不要扩写成另一段故事，不要替玩家新增重大设定。只输出润色后的段落正文，不要写标题、解释、评价、理由、项目符号或修改说明。",
     input: `当前故事上下文：\n${storyText || "暂无。"}\n\n本轮要求：关键词「${requirement?.keyword || "无"}」，情绪「${requirement?.emotion || "无"}」，转折「${requirement?.twist || "无"}」\n\n玩家原文：\n${text}\n\n请先理解原意，再整理为一小段中文。长度尽量接近原文，确保关键词仍然出现。`,
@@ -748,8 +756,8 @@ function sanitizePolishedSegment(text) {
     .trim();
 }
 
-async function generateJson({ instructions, input, fallback }) {
-  const text = await generateText({ instructions, input, fallback: "", maxOutputTokens: 220 });
+async function generateJson({ action = "JSON 生成", instructions, input, fallback }) {
+  const text = await generateText({ action, instructions, input, fallback: "", maxOutputTokens: 220 });
   if (!text) return fallback;
   try {
     return JSON.parse(text.replace(/^```json\s*|\s*```$/g, "").trim());
@@ -764,18 +772,28 @@ async function generateJson({ instructions, input, fallback }) {
   }
 }
 
-async function generateText({ instructions, input, fallback, maxOutputTokens = 300 }) {
+async function generateText({ action = "AI 生成", instructions, input, fallback, maxOutputTokens = 300 }) {
   const provider = getAIProvider();
+  const started = Date.now();
+  let text = fallback;
+
   if (provider === "gemini") {
-    return generateGeminiText({ instructions, input, fallback, maxOutputTokens });
+    text = await generateGeminiText({ instructions, input, fallback, maxOutputTokens });
+  } else if (provider === "openrouter") {
+    text = await generateOpenRouterText({ instructions, input, fallback, maxOutputTokens });
+  } else if (provider === "openai") {
+    text = await generateOpenAIText({ instructions, input, fallback, maxOutputTokens });
   }
-  if (provider === "openrouter") {
-    return generateOpenRouterText({ instructions, input, fallback, maxOutputTokens });
-  }
-  if (provider === "openai") {
-    return generateOpenAIText({ instructions, input, fallback, maxOutputTokens });
-  }
-  return fallback;
+
+  recordGeneration({
+    action,
+    provider,
+    model: getAIModelName(),
+    durationMs: Date.now() - started,
+    usedFallback: provider === "local" || !text || text === fallback,
+    ok: provider !== "local" && Boolean(text) && text !== fallback
+  });
+  return text;
 }
 
 export function getAIProvider() {
@@ -803,7 +821,9 @@ export function getAIStatusSnapshot() {
     ai: getAIProvider() !== "local",
     provider: getAIProvider(),
     model: getAIModelName(),
-    lastError: lastAIError
+    timeoutMs: getAITimeoutMs(),
+    lastError: lastAIError,
+    lastGeneration
   };
 }
 
@@ -818,6 +838,7 @@ export async function checkAIConnection() {
 
   lastAIError = null;
   const text = await generateText({
+    action: "AI 连通检查",
     instructions: "You are a connectivity checker. Reply with exactly OK.",
     input: "Reply with OK.",
     fallback: "",
@@ -841,11 +862,40 @@ function recordAIError(provider, status, message) {
   };
 }
 
+function recordGeneration({ action, provider, model, durationMs, usedFallback, ok }) {
+  lastGeneration = {
+    action,
+    provider,
+    model,
+    durationMs,
+    sourceLabel: usedFallback ? "工坊主持人" : "AI 主持人",
+    usedFallback,
+    ok,
+    at: new Date().toISOString()
+  };
+}
+
+function getAITimeoutMs() {
+  const configured = Number(process.env.AI_TIMEOUT_MS || DEFAULT_AI_TIMEOUT_MS);
+  if (!Number.isFinite(configured)) return DEFAULT_AI_TIMEOUT_MS;
+  return Math.min(30000, Math.max(3000, configured));
+}
+
+async function fetchWithTimeout(url, options = {}, label = "AI request") {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(new Error(`${label} timed out after ${getAITimeoutMs()}ms`)), getAITimeoutMs());
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function generateGeminiText({ instructions, input, fallback, maxOutputTokens }) {
   const apiKey = process.env.GEMINI_API_KEY;
   const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
   try {
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
       {
         method: "POST",
@@ -868,7 +918,8 @@ async function generateGeminiText({ instructions, input, fallback, maxOutputToke
             temperature: 0.8
           }
         })
-      }
+      },
+      "Gemini"
     );
 
     if (!response.ok) {
@@ -909,7 +960,7 @@ async function generateOpenRouterText({ instructions, input, fallback, maxOutput
 
 async function requestOpenRouterModel({ apiKey, model, instructions, input, maxOutputTokens }) {
   try {
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const response = await fetchWithTimeout("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -926,7 +977,7 @@ async function requestOpenRouterModel({ apiKey, model, instructions, input, maxO
         max_tokens: maxOutputTokens,
         temperature: 0.8
       })
-    });
+    }, `OpenRouter ${model}`);
 
     if (!response.ok) {
       const message = await response.text();
@@ -947,7 +998,7 @@ async function requestOpenRouterModel({ apiKey, model, instructions, input, maxO
 async function generateOpenAIText({ instructions, input, fallback, maxOutputTokens }) {
   const apiKey = process.env.OPENAI_API_KEY;
   try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
+    const response = await fetchWithTimeout("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -960,7 +1011,7 @@ async function generateOpenAIText({ instructions, input, fallback, maxOutputToke
         max_output_tokens: maxOutputTokens,
         store: false
       })
-    });
+    }, "OpenAI");
 
     if (!response.ok) {
       const message = await response.text();

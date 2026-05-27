@@ -24,6 +24,7 @@ loadEnvFile(join(projectDir, ".env"));
 
 const rooms = new Map();
 const streams = new Map();
+const actionLocks = new Map();
 const startedAt = Date.now();
 
 const mimeTypes = {
@@ -121,6 +122,20 @@ function streamCount() {
   let count = 0;
   for (const clients of streams.values()) count += clients.size;
   return count;
+}
+
+async function withActionLock(key, task) {
+  if (actionLocks.has(key)) {
+    const error = new Error("上一项操作还在处理中，请稍等一下。");
+    error.statusCode = 409;
+    throw error;
+  }
+  actionLocks.set(key, true);
+  try {
+    return await task();
+  } finally {
+    actionLocks.delete(key);
+  }
 }
 
 function addSegment(room, segment) {
@@ -543,32 +558,34 @@ async function handleApi(req, res) {
       }
 
       if (req.method === "POST" && action === "submit-segment") {
-        if (room.status !== "playing") return sendJson(res, 409, { error: "当前不能提交段落。" });
-        if (playerId !== room.currentTurnPlayerId) return sendJson(res, 403, { error: "还没有轮到你。" });
+        await withActionLock(`${code}:submit`, async () => {
+          if (room.status !== "playing") return sendJson(res, 409, { error: "当前不能提交段落。" });
+          if (playerId !== room.currentTurnPlayerId) return sendJson(res, 403, { error: "还没有轮到你。" });
 
-        const player = room.players.find((item) => item.id === playerId);
-        const text = String(body.text || "").trim();
-        if (!text) return sendJson(res, 400, { error: "段落不能为空。" });
-        if (text.length > room.wordLimit) return sendJson(res, 400, { error: `不能超过 ${room.wordLimit} 字。` });
-        const validationError = validatePlayerSegment(text, room);
-        if (validationError) return sendJson(res, 400, { error: validationError });
-        if (room.currentRequirement?.keyword && !text.includes(room.currentRequirement.keyword)) {
-          return sendJson(res, 400, { error: `这一段需要包含关键词「${room.currentRequirement.keyword}」。` });
-        }
+          const player = room.players.find((item) => item.id === playerId);
+          const text = String(body.text || "").trim();
+          if (!text) return sendJson(res, 400, { error: "段落不能为空。" });
+          if (text.length > room.wordLimit) return sendJson(res, 400, { error: `不能超过 ${room.wordLimit} 字。` });
+          const validationError = validatePlayerSegment(text, room);
+          if (validationError) return sendJson(res, 400, { error: validationError });
+          if (room.currentRequirement?.keyword && !text.includes(room.currentRequirement.keyword)) {
+            return sendJson(res, 400, { error: `这一段需要包含关键词「${room.currentRequirement.keyword}」。` });
+          }
 
-        addSegment(room, {
-          authorType: "player",
-          authorId: player.id,
-          authorName: player.name,
-          text,
-          roundNumber: room.currentRound,
-          requirement: room.currentRequirement
+          addSegment(room, {
+            authorType: "player",
+            authorId: player.id,
+            authorName: player.name,
+            text,
+            roundNumber: room.currentRound,
+            requirement: room.currentRequirement
+          });
+          addRoomEvent(room, "story", `${player.name} 提交了第 ${room.currentRound} 轮段落。`, player.id);
+          await refreshStoryTitle(room, "story");
+          await advanceTurn(room);
+          await saveAndBroadcast(room);
+          sendJson(res, 200, { room: publicRoom(room) });
         });
-        addRoomEvent(room, "story", `${player.name} 提交了第 ${room.currentRound} 轮段落。`, player.id);
-        await refreshStoryTitle(room, "story");
-        await advanceTurn(room);
-        await saveAndBroadcast(room);
-        sendJson(res, 200, { room: publicRoom(room) });
         return;
       }
 
@@ -720,7 +737,7 @@ async function handleApi(req, res) {
 
     sendJson(res, 404, { error: "接口不存在。" });
   } catch (error) {
-    sendJson(res, 500, { error: error.message || "服务器错误。" });
+    sendJson(res, error.statusCode || 500, { error: error.message || "服务器错误。" });
   }
 }
 

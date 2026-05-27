@@ -25,6 +25,7 @@ AI_PROVIDER=local
 
 ```text
 AI_PROVIDER=gemini
+AI_TIMEOUT_MS=12000
 GEMINI_API_KEY=你的 Gemini API key
 GEMINI_MODEL=gemini-2.5-flash
 ```
@@ -39,6 +40,8 @@ APP_PUBLIC_URL=https://你的 Render 地址
 ```
 
 `openrouter/free` 会自动选择当前可用的免费模型。免费模型可能遇到上游限流；本项目会自动尝试备用免费模型，仍失败时回退到本地占位逻辑。
+
+`AI_TIMEOUT_MS` 默认 12000，表示单次 AI 请求最多等待约 12 秒，超时后会走本地主持人兜底。
 
 没有 `GEMINI_API_KEY`、`OPENROUTER_API_KEY` 或 `OPENAI_API_KEY` 时，游戏仍可运行，但 AI 主持人会使用本地占位逻辑。
 

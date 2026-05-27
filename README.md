@@ -32,6 +32,7 @@ npm start
 
 ```bash
 export AI_PROVIDER="gemini"
+export AI_TIMEOUT_MS="12000"
 export GEMINI_API_KEY="你的 Gemini API key"
 export GEMINI_MODEL="gemini-2.5-flash"
 node src/server.js
@@ -56,6 +57,8 @@ export OPENROUTER_MODEL="openrouter/free"
 ```
 
 `openrouter/free` 会让 OpenRouter 自动选择当前可用的免费模型。免费模型偶尔会被上游限流；服务端会自动尝试备用免费模型，并在失败时回退到本地占位逻辑，保证游戏流程不中断。
+
+`AI_TIMEOUT_MS` 用来限制单次 AI 请求等待时间，默认 12000 毫秒，避免玩家点按钮后一直卡住。
 
 或者切换到 OpenAI：
 

@@ -86,6 +86,25 @@ button[aria-busy="true"] {
   opacity: 0.72;
 }
 
+button[aria-busy="true"]::after {
+  content: "";
+  display: inline-block;
+  width: 0.7em;
+  height: 0.7em;
+  margin-left: 8px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  vertical-align: -0.1em;
+  animation: spin 800ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 input,
 select,
 textarea {
@@ -115,6 +134,12 @@ textarea {
   min-height: 150px;
   resize: vertical;
   line-height: 1.75;
+}
+
+.draft-hint {
+  margin: -4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 label {
@@ -601,6 +626,30 @@ label {
   align-items: center;
   justify-content: flex-end;
   flex-wrap: wrap;
+}
+
+.connection {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.68);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  padding: 4px 10px;
+}
+
+.connection.online {
+  border-color: rgba(23, 111, 106, 0.25);
+  color: var(--accent);
+}
+
+.connection.reconnecting,
+.connection.connecting {
+  border-color: rgba(154, 82, 44, 0.28);
+  color: var(--accent-2);
 }
 
 .code {
