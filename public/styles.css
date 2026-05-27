@@ -729,6 +729,34 @@ a button {
   padding: 14px;
 }
 
+.countdown-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid rgba(23, 111, 106, 0.22);
+  border-radius: 8px;
+  background: var(--soft-green);
+  color: var(--accent);
+  padding: 12px 14px;
+}
+
+.countdown-box strong {
+  display: grid;
+  place-items: center;
+  min-width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #fffdf8;
+  color: var(--accent);
+  font-size: 22px;
+  box-shadow: inset 0 0 0 1px rgba(23, 111, 106, 0.16);
+}
+
+.countdown-box span {
+  color: var(--ink);
+  line-height: 1.55;
+}
+
 .vote-box p {
   margin: 0;
   line-height: 1.65;

@@ -16,7 +16,9 @@ const state = {
   systemStatus: null,
   systemStatusLoading: false,
   connectionStatus: "idle",
-  draftRestoredKey: ""
+  draftRestoredKey: "",
+  clockNow: Date.now(),
+  uiClock: null
 };
 
 const styleOptions = [
@@ -74,6 +76,7 @@ function saveRoomCode(code) {
 
 function clearSavedRoom() {
   if (state.eventSource) state.eventSource.close();
+  stopUiClock();
   localStorage.removeItem("storyRelayPlayer");
   localStorage.removeItem("storyRelayRoomCode");
   clearSavedDrafts();
@@ -154,6 +157,7 @@ function connect(code) {
       setError("这个房间已经被房主清理。");
       return;
     }
+    syncUiClock();
     render();
   };
   state.eventSource.addEventListener("ping", () => {
@@ -235,6 +239,34 @@ function isCurrentPlayer() {
 
 function storyStyleLabel(value) {
   return styleOptions.find(([key]) => key === value)?.[1] || "悬疑怪谈";
+}
+
+function needsUiClock() {
+  return Boolean(state.room?.status === "selecting_opening" && state.room?.openingAutoPickAt);
+}
+
+function stopUiClock() {
+  if (!state.uiClock) return;
+  clearInterval(state.uiClock);
+  state.uiClock = null;
+}
+
+function syncUiClock() {
+  if (needsUiClock()) {
+    state.clockNow = Date.now();
+    if (!state.uiClock) {
+      state.uiClock = setInterval(() => {
+        state.clockNow = Date.now();
+        if (!needsUiClock()) {
+          stopUiClock();
+          return;
+        }
+        render();
+      }, 1000);
+    }
+    return;
+  }
+  stopUiClock();
 }
 
 function showCopied(button, label = "已复制") {
@@ -728,12 +760,25 @@ function renderOpeningSelection() {
   const rerollNeeded = Math.floor(state.room.players.length / 2) + 1;
   const hasRerollVoted = rerollVotes.includes(state.player?.id);
   const rerollNames = rerollVotes.map(playerName).join("、");
+  const autoPickMs = state.room.openingAutoPickAt ? new Date(state.room.openingAutoPickAt).getTime() - state.clockNow : 0;
+  const autoPickSeconds = Math.max(0, Math.ceil(autoPickMs / 1000));
+  const autoPickOption = state.room.openingOptions.find((option) => option.id === state.room.openingAutoPickId);
   layout(`
     <section class="panel stack opening-panel">
       <div class="row">
         <h2>选择故事开头</h2>
         <span class="pill">房间 ${state.room.code}</span>
       </div>
+      ${
+        autoPickOption
+          ? `
+            <div class="countdown-box">
+              <strong>${autoPickSeconds || 1}</strong>
+              <span>所有玩家已选中同一个开头，即将自动开始。</span>
+            </div>
+          `
+          : `<p class="muted">所有玩家投到同一个开头后，会进入短倒计时并自动开始。</p>`
+      }
       <div class="grid opening-grid">
         ${state.room.openingOptions
           .map(

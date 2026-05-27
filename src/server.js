@@ -25,7 +25,9 @@ loadEnvFile(join(projectDir, ".env"));
 const rooms = new Map();
 const streams = new Map();
 const actionLocks = new Map();
+const openingAutoTimers = new Map();
 const startedAt = Date.now();
+const OPENING_AUTO_PICK_MS = 8000;
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -65,6 +67,8 @@ function loadEnvFile(path) {
 function publicRoom(room) {
   return {
     openingRerollVotes: [],
+    openingAutoPickAt: null,
+    openingAutoPickId: null,
     requirementRerollVotes: [],
     storyStyle: "suspense",
     styleVotes: {},
@@ -105,6 +109,7 @@ async function saveAndBroadcast(room) {
 }
 
 async function deleteAndBroadcast(room) {
+  clearOpeningAutoPick(room);
   room.deletedAt = now();
   broadcast(room.code);
   const deleted = await deleteRoom(room.code);
@@ -311,6 +316,7 @@ function createRoom({ name, settings }) {
 }
 
 async function refreshOpeningOptions(room) {
+  clearOpeningAutoPick(room);
   const openingTexts = await createOpeningOptions(3, room.storyStyle);
   room.openingOptions = openingTexts.map((text) => ({
     id: uid("opening"),
@@ -324,6 +330,74 @@ async function refreshOpeningOptions(room) {
 
 function neededVotes(room) {
   return Math.floor(room.players.length / 2) + 1;
+}
+
+function clearOpeningAutoPick(room) {
+  if (!room?.code) return;
+  const timer = openingAutoTimers.get(room.code);
+  if (timer) clearTimeout(timer);
+  openingAutoTimers.delete(room.code);
+  room.openingAutoPickAt = null;
+  room.openingAutoPickId = null;
+}
+
+function getUnanimousOpening(room) {
+  if (room.status !== "selecting_opening") return null;
+  if (room.players.length < 2) return null;
+  if ((room.openingRerollVotes || []).length > 0) return null;
+  const playerIds = room.players.map((player) => player.id);
+  return room.openingOptions.find((option) => playerIds.every((id) => option.votes.includes(id))) || null;
+}
+
+async function chooseOpening(room, picked, playerId = null, auto = false) {
+  clearOpeningAutoPick(room);
+  room.selectedOpeningId = picked.id;
+  room.story.openingText = picked.text;
+  room.story.title = picked.text.replace(/[，。！？：].*$/, "").slice(0, 18) || "故事接龙";
+  room.story.titleSource = "opening";
+  room.status = "playing";
+  room.turnIndex = 0;
+  room.playerTurnsCompleted = 0;
+  room.endVotes = [];
+  room.openingRerollVotes = [];
+  room.requirementRerollVotes = [];
+  room.currentRound = 1;
+  room.currentTurnPlayerId = room.players[0].id;
+  room.currentRequirement = await createRequirement(1, getRoomStoryText(room), room.storyStyle);
+  addRoomEvent(room, "story", `${auto ? "全员投票通过，" : ""}本局开头已确定：${picked.text}`, playerId);
+}
+
+function scheduleOpeningAutoPick(room) {
+  const picked = getUnanimousOpening(room);
+  if (!picked) {
+    clearOpeningAutoPick(room);
+    return false;
+  }
+
+  if (room.openingAutoPickId === picked.id && room.openingAutoPickAt) return true;
+  clearOpeningAutoPick(room);
+  room.openingAutoPickId = picked.id;
+  room.openingAutoPickAt = new Date(Date.now() + OPENING_AUTO_PICK_MS).toISOString();
+  openingAutoTimers.set(
+    room.code,
+    setTimeout(() => {
+      withActionLock(`${room.code}:opening`, async () => {
+        const currentRoom = rooms.get(room.code);
+        if (!currentRoom || currentRoom.status !== "selecting_opening") return;
+        const currentPick = getUnanimousOpening(currentRoom);
+        if (!currentPick || currentPick.id !== picked.id) {
+          clearOpeningAutoPick(currentRoom);
+          await saveAndBroadcast(currentRoom);
+          return;
+        }
+        await chooseOpening(currentRoom, currentPick, null, true);
+        await saveAndBroadcast(currentRoom);
+      }).catch((error) => {
+        console.warn(`Opening auto-pick failed for ${room.code}: ${error.message}`);
+      });
+    }, OPENING_AUTO_PICK_MS)
+  );
+  return true;
 }
 
 function resolveStoryStyle(room) {
@@ -474,6 +548,7 @@ async function handleApi(req, res) {
         room.storyStyle = resolveStoryStyle(room);
         await refreshOpeningOptions(room);
         room.status = "selecting_opening";
+        clearOpeningAutoPick(room);
         addRoomEvent(room, "room", "游戏开始，进入故事开头选择。", playerId);
         await saveAndBroadcast(room);
         sendJson(res, 200, { room: publicRoom(room) });
@@ -492,6 +567,8 @@ async function handleApi(req, res) {
         if (room.openingRerollVotes.length >= neededVotes(room)) {
           await refreshOpeningOptions(room);
           addRoomEvent(room, "vote", "重抽开头投票通过，系统换了一批开头。");
+        } else {
+          scheduleOpeningAutoPick(room);
         }
 
         await saveAndBroadcast(room);
@@ -504,6 +581,11 @@ async function handleApi(req, res) {
         if (!option) return sendJson(res, 404, { error: "开头不存在。" });
         for (const item of room.openingOptions) item.votes = item.votes.filter((id) => id !== playerId);
         option.votes.push(playerId);
+        const previousAutoPickId = room.openingAutoPickId;
+        const willAutoPick = scheduleOpeningAutoPick(room);
+        if (willAutoPick && previousAutoPickId !== option.id) {
+          addRoomEvent(room, "vote", "所有玩家选中了同一个开头，倒计时后自动开始。", playerId);
+        }
         await saveAndBroadcast(room);
         sendJson(res, 200, { room: publicRoom(room) });
         return;
@@ -516,20 +598,7 @@ async function handleApi(req, res) {
           [...room.openingOptions].sort((a, b) => b.votes.length - a.votes.length)[0];
         if (!picked) return sendJson(res, 409, { error: "还没有可选开头。" });
 
-        room.selectedOpeningId = picked.id;
-        room.story.openingText = picked.text;
-        room.story.title = picked.text.replace(/[，。！？：].*$/, "").slice(0, 18) || "故事接龙";
-        room.story.titleSource = "opening";
-        room.status = "playing";
-        room.turnIndex = 0;
-        room.playerTurnsCompleted = 0;
-        room.endVotes = [];
-        room.openingRerollVotes = [];
-        room.requirementRerollVotes = [];
-        room.currentRound = 1;
-        room.currentTurnPlayerId = room.players[0].id;
-        room.currentRequirement = await createRequirement(1, getRoomStoryText(room), room.storyStyle);
-        addRoomEvent(room, "story", `本局开头已确定：${picked.text}`, playerId);
+        await chooseOpening(room, picked, playerId, false);
         await saveAndBroadcast(room);
         sendJson(res, 200, { room: publicRoom(room) });
         return;
@@ -766,6 +835,14 @@ const server = createServer((req, res) => {
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1");
 await restoreRooms(rooms);
+await Promise.all(
+  [...rooms.values()]
+    .filter((room) => room.status === "selecting_opening")
+    .map(async (room) => {
+      scheduleOpeningAutoPick(room);
+      await saveRoom(publicRoom(room));
+    })
+);
 server.listen(port, host, () => {
   console.log(`Story Relay is running at http://${host}:${port}`);
 });
