@@ -246,7 +246,10 @@ function turnOrderedPlayers(room = state.room) {
 }
 
 function needsUiClock() {
-  return Boolean(state.room?.status === "selecting_opening" && state.room?.openingAutoPickAt);
+  return Boolean(
+    (state.room?.status === "selecting_opening" && state.room?.openingAutoPickAt) ||
+      (state.room?.status === "spinning_order" && state.room?.orderSpinEndsAt)
+  );
 }
 
 function stopUiClock() {
@@ -854,6 +857,45 @@ function renderOpeningSelection() {
   });
 }
 
+function renderOrderSpin() {
+  const orderedPlayers = turnOrderedPlayers(state.room);
+  const firstPlayer = orderedPlayers[0];
+  const spinMs = state.room.orderSpinEndsAt ? new Date(state.room.orderSpinEndsAt).getTime() - state.clockNow : 0;
+  const spinSeconds = Math.max(0, Math.ceil(spinMs / 1000));
+  layout(`
+    <section class="panel stack spin-panel">
+      <div class="row">
+        <h2>抽取本局顺序</h2>
+        <span class="pill">房间 ${state.room.code}</span>
+      </div>
+      <div class="spin-stage">
+        <div class="wheel" aria-hidden="true">
+          ${orderedPlayers
+            .map((player, index) => `<span style="--i:${index};--n:${orderedPlayers.length}">${escapeHtml(player.name.slice(0, 2))}</span>`)
+            .join("")}
+        </div>
+        <div class="spin-result">
+          <span class="muted">第一位落笔</span>
+          <strong>${escapeHtml(firstPlayer?.name || "即将揭晓")}</strong>
+          <small>${spinSeconds || 1} 秒后进入第一轮</small>
+        </div>
+      </div>
+      <div class="turn-order-list">
+        ${orderedPlayers
+          .map(
+            (player, index) => `
+              <div class="${index === 0 ? "selected" : ""}">
+                <span>${index + 1}</span>
+                <strong>${escapeHtml(player.name)}</strong>
+              </div>
+            `
+          )
+          .join("")}
+      </div>
+    </section>
+  `);
+}
+
 function renderStory() {
   const canRewriteSystem = isHost() && !state.storyViewCode;
   const segments = state.room.story.segments || [];
@@ -1367,6 +1409,7 @@ function render() {
 
   if (state.room.status === "lobby") renderLobby();
   if (state.room.status === "selecting_opening") renderOpeningSelection();
+  if (state.room.status === "spinning_order") renderOrderSpin();
   if (state.room.status === "playing") renderPlaying();
   if (state.room.status === "ending" || state.room.status === "finished") renderEnding();
 

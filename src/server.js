@@ -26,8 +26,10 @@ const rooms = new Map();
 const streams = new Map();
 const actionLocks = new Map();
 const openingAutoTimers = new Map();
+const orderSpinTimers = new Map();
 const startedAt = Date.now();
 const OPENING_AUTO_PICK_MS = 8000;
+const ORDER_SPIN_MS = 5500;
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -78,6 +80,7 @@ function publicRoom(room) {
     openingRerollVotes: [],
     openingAutoPickAt: null,
     openingAutoPickId: null,
+    orderSpinEndsAt: null,
     requirementRerollVotes: [],
     storyStyle: "suspense",
     styleVotes: {},
@@ -119,6 +122,7 @@ async function saveAndBroadcast(room) {
 
 async function deleteAndBroadcast(room) {
   clearOpeningAutoPick(room);
+  clearOrderSpin(room);
   room.deletedAt = now();
   broadcast(room.code);
   const deleted = await deleteRoom(room.code);
@@ -350,6 +354,14 @@ function clearOpeningAutoPick(room) {
   room.openingAutoPickId = null;
 }
 
+function clearOrderSpin(room) {
+  if (!room?.code) return;
+  const timer = orderSpinTimers.get(room.code);
+  if (timer) clearTimeout(timer);
+  orderSpinTimers.delete(room.code);
+  room.orderSpinEndsAt = null;
+}
+
 function getUnanimousOpening(room) {
   if (room.status !== "selecting_opening") return null;
   if (room.players.length < 2) return null;
@@ -360,23 +372,48 @@ function getUnanimousOpening(room) {
 
 async function chooseOpening(room, picked, playerId = null, auto = false) {
   clearOpeningAutoPick(room);
+  clearOrderSpin(room);
   const orderedPlayers = shufflePlayers(room.players);
   room.players = orderedPlayers;
   room.selectedOpeningId = picked.id;
   room.story.openingText = picked.text;
   room.story.title = picked.text.replace(/[，。！？：].*$/, "").slice(0, 18) || "故事接龙";
   room.story.titleSource = "opening";
-  room.status = "playing";
+  room.status = "spinning_order";
   room.turnIndex = 0;
   room.playerTurnsCompleted = 0;
   room.endVotes = [];
   room.openingRerollVotes = [];
   room.requirementRerollVotes = [];
+  room.currentRequirement = null;
   room.currentRound = 1;
   room.currentTurnPlayerId = orderedPlayers[0].id;
-  room.currentRequirement = await createRequirement(1, getRoomStoryText(room), room.storyStyle);
+  room.orderSpinEndsAt = new Date(Date.now() + ORDER_SPIN_MS).toISOString();
   addRoomEvent(room, "story", `${auto ? "全员投票通过，" : ""}本局开头已确定：${picked.text}`, playerId);
   addRoomEvent(room, "turn", `本局顺序已随机决定：${orderedPlayers.map((player) => player.name).join(" → ")}。`, playerId);
+  scheduleOrderSpin(room);
+}
+
+function scheduleOrderSpin(room) {
+  if (!room?.code || room.status !== "spinning_order") return;
+  clearTimeout(orderSpinTimers.get(room.code));
+  const delay = Math.max(500, new Date(room.orderSpinEndsAt || Date.now()).getTime() - Date.now());
+  orderSpinTimers.set(
+    room.code,
+    setTimeout(() => {
+      withActionLock(`${room.code}:order-spin`, async () => {
+        const currentRoom = rooms.get(room.code);
+        if (!currentRoom || currentRoom.status !== "spinning_order") return;
+        currentRoom.status = "playing";
+        currentRoom.orderSpinEndsAt = null;
+        currentRoom.currentRequirement = await createRequirement(1, getRoomStoryText(currentRoom), currentRoom.storyStyle);
+        addRoomEvent(currentRoom, "turn", `第一位落笔的是 ${playerLabel(currentRoom, currentRoom.currentTurnPlayerId)}。`);
+        await saveAndBroadcast(currentRoom);
+      }).catch((error) => {
+        console.warn(`Order spin failed for ${room.code}: ${error.message}`);
+      });
+    }, delay)
+  );
 }
 
 function scheduleOpeningAutoPick(room) {
@@ -849,9 +886,10 @@ const host = process.env.HOST || (process.env.NODE_ENV === "production" ? "0.0.0
 await restoreRooms(rooms);
 await Promise.all(
   [...rooms.values()]
-    .filter((room) => room.status === "selecting_opening")
+    .filter((room) => room.status === "selecting_opening" || room.status === "spinning_order")
     .map(async (room) => {
-      scheduleOpeningAutoPick(room);
+      if (room.status === "selecting_opening") scheduleOpeningAutoPick(room);
+      if (room.status === "spinning_order") scheduleOrderSpin(room);
       await saveRoom(publicRoom(room));
     })
 );
