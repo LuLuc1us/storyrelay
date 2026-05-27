@@ -237,6 +237,18 @@ function storyStyleLabel(value) {
   return styleOptions.find(([key]) => key === value)?.[1] || "悬疑怪谈";
 }
 
+function showCopied(button, label = "已复制") {
+  if (!button) return;
+  const original = button.textContent;
+  button.textContent = label;
+  button.disabled = true;
+  setTimeout(() => {
+    if (!button.isConnected) return;
+    button.textContent = original;
+    button.disabled = false;
+  }, 1200);
+}
+
 function clearDraftAssist() {
   state.draft = "";
   state.polish = null;
@@ -795,33 +807,38 @@ function renderOpeningSelection() {
 
 function renderStory() {
   const canRewriteSystem = isHost() && !state.storyViewCode;
+  const segments = state.room.story.segments || [];
   return `
     <div class="story">
       <div class="opening">${escapeHtml(state.room.story.openingText || "故事还没有开始。")}</div>
-      ${state.room.story.segments
-        .map(
-          (segment) => `
-            <article class="segment ${segment.authorType === "system" ? "system" : ""}">
-              <div class="segment-head">
-                <strong>${escapeHtml(segment.authorName)}</strong>
-                <span>第 ${segment.roundNumber || "-"} 轮</span>
-              </div>
-              <p>${escapeHtml(segment.text)}</p>
-              ${
-                canRewriteSystem && segment.authorType === "system"
-                  ? `
-                    <div class="segment-tools">
-                      <button class="secondary" data-rewrite-segment="${segment.id}" data-tone="balanced" type="button">重写</button>
-                      <button class="secondary" data-rewrite-segment="${segment.id}" data-tone="restrained" type="button">更克制</button>
-                      <button class="secondary" data-rewrite-segment="${segment.id}" data-tone="dramatic" type="button">更戏剧</button>
+      ${
+        segments.length
+          ? segments
+              .map(
+                (segment) => `
+                  <article class="segment ${segment.authorType === "system" ? "system" : ""}">
+                    <div class="segment-head">
+                      <strong>${escapeHtml(segment.authorName)}</strong>
+                      <span>第 ${segment.roundNumber || "-"} 轮</span>
                     </div>
-                  `
-                  : ""
-              }
-            </article>
-          `
-        )
-        .join("")}
+                    <p>${escapeHtml(segment.text)}</p>
+                    ${
+                      canRewriteSystem && segment.authorType === "system"
+                        ? `
+                          <div class="segment-tools">
+                            <button class="secondary" data-rewrite-segment="${segment.id}" data-tone="balanced" type="button">重写</button>
+                            <button class="secondary" data-rewrite-segment="${segment.id}" data-tone="restrained" type="button">更克制</button>
+                            <button class="secondary" data-rewrite-segment="${segment.id}" data-tone="dramatic" type="button">更戏剧</button>
+                          </div>
+                        `
+                        : ""
+                    }
+                  </article>
+                `
+              )
+              .join("")
+          : `<div class="empty-story">故事还在等第一位玩家落笔。</div>`
+      }
     </div>
   `;
 }
@@ -919,11 +936,12 @@ function renderStoryView() {
     renderHome();
   };
 
-  document.querySelector("#copyShareLink")?.addEventListener("click", async () => {
+  document.querySelector("#copyShareLink")?.addEventListener("click", async (event) => {
     const link = storyShareUrl(room.code);
     await navigator.clipboard?.writeText(link);
     const input = document.querySelector("#shareLink");
     input?.select();
+    showCopied(event.currentTarget);
   });
   document.querySelector("#backHome")?.addEventListener("click", goHome);
   document.querySelector("#homeLink")?.addEventListener("click", goHome);
@@ -1104,7 +1122,12 @@ function renderPlaying() {
               <p class="draft-hint">${draftKey(room) && localStorage.getItem(draftKey(room)) ? "草稿已保存在这台设备上。" : "输入会自动保存在这台设备上。"}</p>
               <button id="submitSegment">提交段落</button>
             `
-            : `<p class="muted">等待当前玩家写作中。</p>`
+            : `
+              <div class="waiting-box">
+                <strong>等待 ${escapeHtml(playerName(room.currentTurnPlayerId))} 写作中</strong>
+                <span>故事会在对方提交后自动同步。</span>
+              </div>
+            `
         }
         ${renderEventLog(7)}
       </aside>
@@ -1253,9 +1276,10 @@ function renderEnding() {
     });
   });
 
-  document.querySelector("#copyShareLink")?.addEventListener("click", async () => {
+  document.querySelector("#copyShareLink")?.addEventListener("click", async (event) => {
     await navigator.clipboard?.writeText(shareUrl);
     document.querySelector("#shareLink")?.select();
+    showCopied(event.currentTarget);
   });
 }
 
