@@ -268,12 +268,28 @@ function syncUiClock() {
           stopUiClock();
           return;
         }
-        render();
+        updateLiveClock();
       }, 1000);
     }
     return;
   }
   stopUiClock();
+}
+
+function updateLiveClock() {
+  if (state.room?.status === "spinning_order") {
+    const spinMs = state.room.orderSpinEndsAt ? new Date(state.room.orderSpinEndsAt).getTime() - state.clockNow : 0;
+    const shouldReveal = spinMs <= 1800;
+    const revealNode = document.querySelector(".spin-panel");
+    if (shouldReveal && revealNode && !revealNode.classList.contains("is-revealed")) {
+      render();
+    }
+    return;
+  }
+  const countdown = document.querySelector("[data-countdown]");
+  if (!countdown || !state.room?.openingAutoPickAt) return;
+  const ms = new Date(state.room.openingAutoPickAt).getTime() - state.clockNow;
+  countdown.textContent = String(Math.max(1, Math.ceil(ms / 1000)));
 }
 
 function showCopied(button, label = "已复制") {
@@ -780,7 +796,7 @@ function renderOpeningSelection() {
         autoPickOption
           ? `
             <div class="countdown-box">
-              <strong>${autoPickSeconds || 1}</strong>
+              <strong data-countdown>${autoPickSeconds || 1}</strong>
               <span>所有玩家已选中同一个开头，即将自动开始。</span>
             </div>
           `
@@ -864,7 +880,7 @@ function renderOrderSpin() {
   const spinSeconds = Math.max(0, Math.ceil(spinMs / 1000));
   const revealResult = spinMs <= 1800;
   layout(`
-    <section class="panel stack spin-panel">
+    <section class="panel stack spin-panel ${revealResult ? "is-revealed" : ""}">
       <div class="row">
         <h2>抽取本局顺序</h2>
         <span class="pill">房间 ${state.room.code}</span>
@@ -881,14 +897,14 @@ function renderOrderSpin() {
               <div class="spin-result revealed">
                 <span class="muted">第一位落笔</span>
                 <strong>${escapeHtml(firstPlayer?.name || "即将揭晓")}</strong>
-                <small>${spinSeconds || 1} 秒后进入第一轮</small>
+                <small>即将进入第一轮</small>
               </div>
             `
             : `
               <div class="spin-result drawing">
                 <span class="muted">正在抽取</span>
                 <strong>?</strong>
-                <small>${spinSeconds || 1} 秒后揭晓顺序</small>
+                <small>${Math.max(2, spinSeconds)} 秒后揭晓顺序</small>
               </div>
             `
         }
