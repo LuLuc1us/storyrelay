@@ -17,6 +17,8 @@ const state = {
   systemStatusLoading: false,
   connectionStatus: "idle",
   draftRestoredKey: "",
+  lastSyncAt: "",
+  isRefreshingRoom: false,
   clockNow: Date.now(),
   uiClock: null
 };
@@ -145,11 +147,13 @@ function connect(code) {
   state.eventSource = new EventSource(`/api/rooms/${code}/events`);
   state.eventSource.onopen = () => {
     state.connectionStatus = "online";
+    state.lastSyncAt = new Date().toISOString();
     if (state.error === "同步连接暂时断开，浏览器会自动重连。") state.error = "";
     render();
   };
   state.eventSource.onmessage = (event) => {
     state.connectionStatus = "online";
+    state.lastSyncAt = new Date().toISOString();
     state.room = JSON.parse(event.data);
     if (state.room?.deletedAt) {
       clearSavedRoom();
@@ -161,6 +165,7 @@ function connect(code) {
     render();
   };
   state.eventSource.addEventListener("ping", () => {
+    state.lastSyncAt = new Date().toISOString();
     if (state.connectionStatus !== "online") {
       state.connectionStatus = "online";
       render();
@@ -171,6 +176,23 @@ function connect(code) {
     state.error = "同步连接暂时断开，浏览器会自动重连。";
     render();
   };
+}
+
+async function refreshCurrentRoom() {
+  if (state.isRefreshingRoom || !state.room?.code || state.storyViewCode) return;
+  state.isRefreshingRoom = true;
+  try {
+    const { room } = await api.get(`/api/rooms/${state.room.code}`);
+    state.room = room;
+    state.connectionStatus = "online";
+    state.lastSyncAt = new Date().toISOString();
+    syncUiClock();
+    render();
+  } catch {
+    if (state.connectionStatus === "online") state.connectionStatus = "reconnecting";
+  } finally {
+    state.isRefreshingRoom = false;
+  }
 }
 
 async function resumeRoom(code = state.lastRoomCode) {
@@ -351,10 +373,13 @@ function actionBody(extra = {}) {
 }
 
 function layout(content, toolbar = "") {
+  const syncTime = state.lastSyncAt
+    ? new Date(state.lastSyncAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })
+    : "";
   const connectionLabel = {
     idle: "",
     connecting: "连接中",
-    online: "已同步",
+    online: syncTime ? `已同步 ${syncTime}` : "已同步",
     reconnecting: "重连中"
   }[state.connectionStatus] || "";
   app.innerHTML = `
@@ -1469,3 +1494,8 @@ if (state.storyViewCode) {
 } else {
   render();
 }
+
+window.addEventListener("online", refreshCurrentRoom);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") refreshCurrentRoom();
+});

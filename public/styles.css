@@ -22,6 +22,10 @@
   box-sizing: border-box;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
@@ -66,6 +70,14 @@ button:hover:not(:disabled) {
 
 button:active:not(:disabled) {
   transform: translateY(0);
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid rgba(184, 132, 53, 0.35);
+  outline-offset: 2px;
 }
 
 button.secondary {
@@ -434,6 +446,21 @@ a button {
 .waiting-box {
   display: grid;
   gap: 4px;
+  position: relative;
+  padding-left: 44px;
+}
+
+.waiting-box::before {
+  content: "";
+  position: absolute;
+  left: 18px;
+  top: 23px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 0 rgba(23, 111, 106, 0.28);
+  animation: status-pulse 1.6s ease-out infinite;
 }
 
 .waiting-box strong {
@@ -480,6 +507,10 @@ a button {
 .turn-panel,
 .reader-actions {
   background: #fffaf1;
+}
+
+.turn-panel {
+  border-color: #d8c7ae;
 }
 
 .segment-head {
@@ -588,7 +619,20 @@ a button {
 }
 
 .assist-box.muted {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   color: var(--muted);
+}
+
+.assist-box.muted::before {
+  content: "";
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(23, 111, 106, 0.35);
+  border-right-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 800ms linear infinite;
 }
 
 .event-log {
@@ -645,6 +689,12 @@ a button {
   border-radius: 8px;
   background: var(--soft-blue);
   padding: 14px;
+}
+
+.diagnostics .pill {
+  border-color: rgba(23, 111, 106, 0.22);
+  background: rgba(255, 253, 248, 0.72);
+  color: var(--accent);
 }
 
 .diagnostics p {
@@ -926,6 +976,18 @@ a button {
   }
 }
 
+@keyframes status-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(23, 111, 106, 0.28);
+  }
+  70% {
+    box-shadow: 0 0 0 12px rgba(23, 111, 106, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(23, 111, 106, 0);
+  }
+}
+
 .vote-box p {
   margin: 0;
   line-height: 1.65;
@@ -1006,6 +1068,15 @@ a button {
   font-size: 12px;
   font-weight: 800;
   padding: 4px 10px;
+}
+
+.connection::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
 .connection.online {
@@ -1133,5 +1204,16 @@ a button {
   .segment,
   .opening {
     padding: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
   }
 }

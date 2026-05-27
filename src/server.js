@@ -91,7 +91,10 @@ function publicRoom(room) {
 }
 
 function sendJson(res, status, body) {
-  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
+  res.writeHead(status, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store"
+  });
   res.end(JSON.stringify(body));
 }
 
@@ -866,7 +869,12 @@ async function handleStatic(req, res) {
   try {
     const staticPath = extname(safePath) ? safePath : "/index.html";
     const file = await readFile(join(publicDir, staticPath));
-    res.writeHead(200, { "Content-Type": mimeTypes[extname(staticPath)] || "application/octet-stream" });
+    const extension = extname(staticPath);
+    const cacheControl = extension === ".html" ? "no-store" : "no-cache, max-age=0, must-revalidate";
+    res.writeHead(200, {
+      "Content-Type": mimeTypes[extension] || "application/octet-stream",
+      "Cache-Control": cacheControl
+    });
     res.end(file);
   } catch {
     res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
