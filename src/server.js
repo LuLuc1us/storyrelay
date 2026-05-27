@@ -47,6 +47,15 @@ function roomCode() {
   return rooms.has(code) ? roomCode() : code;
 }
 
+function shufflePlayers(players) {
+  const next = [...players];
+  for (let index = next.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [next[index], next[swapIndex]] = [next[swapIndex], next[index]];
+  }
+  return next.map((player, turnOrder) => ({ ...player, turnOrder }));
+}
+
 function now() {
   return new Date().toISOString();
 }
@@ -351,6 +360,8 @@ function getUnanimousOpening(room) {
 
 async function chooseOpening(room, picked, playerId = null, auto = false) {
   clearOpeningAutoPick(room);
+  const orderedPlayers = shufflePlayers(room.players);
+  room.players = orderedPlayers;
   room.selectedOpeningId = picked.id;
   room.story.openingText = picked.text;
   room.story.title = picked.text.replace(/[，。！？：].*$/, "").slice(0, 18) || "故事接龙";
@@ -362,9 +373,10 @@ async function chooseOpening(room, picked, playerId = null, auto = false) {
   room.openingRerollVotes = [];
   room.requirementRerollVotes = [];
   room.currentRound = 1;
-  room.currentTurnPlayerId = room.players[0].id;
+  room.currentTurnPlayerId = orderedPlayers[0].id;
   room.currentRequirement = await createRequirement(1, getRoomStoryText(room), room.storyStyle);
   addRoomEvent(room, "story", `${auto ? "全员投票通过，" : ""}本局开头已确定：${picked.text}`, playerId);
+  addRoomEvent(room, "turn", `本局顺序已随机决定：${orderedPlayers.map((player) => player.name).join(" → ")}。`, playerId);
 }
 
 function scheduleOpeningAutoPick(room) {
@@ -786,7 +798,7 @@ async function handleApi(req, res) {
         room.requirementRerollVotes = [];
         room.turnIndex = 0;
         room.currentRound = room.playerTurnsCompleted + 1;
-        room.currentTurnPlayerId = room.players[0].id;
+        room.currentTurnPlayerId = room.players[room.turnIndex].id;
         room.currentRequirement = await createRequirement(room.currentRound, getRoomStoryText(room), room.storyStyle);
         addRoomEvent(room, "room", "玩家选择继续加写一轮。", playerId);
         await saveAndBroadcast(room);

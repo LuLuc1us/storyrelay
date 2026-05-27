@@ -377,6 +377,12 @@ a button {
   font-weight: 700;
 }
 
+.pill.active-turn {
+  border-color: rgba(23, 111, 106, 0.28);
+  background: var(--soft-green);
+  color: var(--accent);
+}
+
 .player-list {
   display: grid;
   gap: 9px;

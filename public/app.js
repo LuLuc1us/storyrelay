@@ -241,6 +241,10 @@ function storyStyleLabel(value) {
   return styleOptions.find(([key]) => key === value)?.[1] || "悬疑怪谈";
 }
 
+function turnOrderedPlayers(room = state.room) {
+  return [...(room?.players || [])].sort((a, b) => Number(a.turnOrder || 0) - Number(b.turnOrder || 0));
+}
+
 function needsUiClock() {
   return Boolean(state.room?.status === "selecting_opening" && state.room?.openingAutoPickAt);
 }
@@ -1148,7 +1152,9 @@ function renderPlaying() {
         </div>
         <p class="turn-player">轮到：<strong>${escapeHtml(playerName(room.currentTurnPlayerId))}</strong></p>
         <div class="row">
-          ${room.players.map((player) => `<span class="pill">${escapeHtml(player.name)}</span>`).join("")}
+          ${turnOrderedPlayers(room)
+            .map((player) => `<span class="pill ${player.id === room.currentTurnPlayerId ? "active-turn" : ""}">${escapeHtml(player.name)}</span>`)
+            .join("")}
         </div>
         ${renderRequirement()}
         <div class="action-grid">
