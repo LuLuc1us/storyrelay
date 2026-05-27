@@ -10,13 +10,13 @@ services:
       - key: NODE_ENV
         value: production
       - key: AI_PROVIDER
-        value: openrouter
+        value: groq
       - key: OPENROUTER_MODEL
         value: openrouter/free
       - key: GROQ_MODEL
         value: llama-3.3-70b-versatile
       - key: AI_FALLBACK_PROVIDERS
-        value: openrouter,groq,gemini,openai
+        value: groq,openrouter,gemini,openai
       - key: APP_PUBLIC_URL
         value: https://story-relay.onrender.com
       - key: OPENROUTER_API_KEY
