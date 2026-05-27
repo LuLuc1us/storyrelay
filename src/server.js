@@ -470,8 +470,9 @@ async function handleApi(req, res) {
       return;
     }
 
-    if (req.method === "GET" && req.url === "/api/ai-check") {
-      sendJson(res, 200, await checkAIConnection());
+    if (req.method === "GET" && req.url?.startsWith("/api/ai-check")) {
+      const url = new URL(req.url, "http://localhost");
+      sendJson(res, 200, await checkAIConnection(url.searchParams.get("provider") || ""));
       return;
     }
 

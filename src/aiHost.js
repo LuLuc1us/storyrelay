@@ -773,8 +773,8 @@ async function generateJson({ action = "JSON 生成", instructions, input, fallb
   }
 }
 
-async function generateText({ action = "AI 生成", instructions, input, fallback, maxOutputTokens = 300 }) {
-  const providers = getAIProviderChain();
+async function generateText({ action = "AI 生成", instructions, input, fallback, maxOutputTokens = 300, providerOverride = "" }) {
+  const providers = getAIProviderChain(providerOverride);
   const started = Date.now();
 
   for (const provider of providers) {
@@ -815,9 +815,10 @@ export function getAIProvider() {
   return getAIProviderChain()[0] || "local";
 }
 
-function getAIProviderChain() {
+function getAIProviderChain(providerOverride = "") {
+  const override = String(providerOverride || "").toLowerCase();
   const requested = String(process.env.AI_PROVIDER || "").toLowerCase();
-  if (requested === "local") return [];
+  if (requested === "local" && !override) return [];
 
   const configuredProviders = {
     openrouter: Boolean(process.env.OPENROUTER_API_KEY),
@@ -834,6 +835,7 @@ function getAIProviderChain() {
     : defaultOrder;
   const ordered = [];
 
+  if (configuredProviders[override]) ordered.push(override);
   if (configuredProviders[requested]) ordered.push(requested);
   for (const provider of requestedOrder) {
     if (configuredProviders[provider] && !ordered.includes(provider)) ordered.push(provider);
@@ -866,8 +868,9 @@ export function getAIStatusSnapshot() {
   };
 }
 
-export async function checkAIConnection() {
-  if (getAIProvider() === "local") {
+export async function checkAIConnection(providerOverride = "") {
+  const providers = getAIProviderChain(providerOverride);
+  if (!providers.length) {
     return {
       ok: false,
       ...getAIStatusSnapshot(),
@@ -881,7 +884,8 @@ export async function checkAIConnection() {
     instructions: "You are a connectivity checker. Reply with exactly OK.",
     input: "Reply with OK.",
     fallback: "",
-    maxOutputTokens: 8
+    maxOutputTokens: 8,
+    providerOverride
   });
 
   return {
