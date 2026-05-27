@@ -794,6 +794,10 @@ a button {
   animation: wheel-spin 1.25s cubic-bezier(0.37, 0, 0.21, 1) infinite;
 }
 
+.wheel.settling {
+  animation: wheel-settle 1.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
 .wheel::after {
   content: "";
   position: absolute;
@@ -824,9 +828,19 @@ a button {
   gap: 8px;
 }
 
+.spin-result.revealed,
+.turn-order-list.revealed {
+  animation: reveal-pop 420ms ease both;
+}
+
 .spin-result strong {
   font-size: clamp(34px, 6vw, 64px);
   line-height: 1;
+}
+
+.spin-result.drawing strong {
+  color: var(--gold);
+  animation: question-pulse 700ms ease-in-out infinite alternate;
 }
 
 .spin-result small {
@@ -855,6 +869,11 @@ a button {
   background: var(--soft-green);
 }
 
+.turn-order-list.hidden-order div {
+  color: var(--muted);
+  background: rgba(255, 253, 248, 0.68);
+}
+
 .turn-order-list span {
   display: grid;
   place-items: center;
@@ -869,6 +888,40 @@ a button {
 @keyframes wheel-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes wheel-settle {
+  0% {
+    transform: rotate(0turn);
+  }
+  78% {
+    transform: rotate(2.8turn);
+  }
+  100% {
+    transform: rotate(3turn);
+  }
+}
+
+@keyframes reveal-pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes question-pulse {
+  from {
+    opacity: 0.45;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1.04);
   }
 }
 

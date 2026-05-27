@@ -862,6 +862,7 @@ function renderOrderSpin() {
   const firstPlayer = orderedPlayers[0];
   const spinMs = state.room.orderSpinEndsAt ? new Date(state.room.orderSpinEndsAt).getTime() - state.clockNow : 0;
   const spinSeconds = Math.max(0, Math.ceil(spinMs / 1000));
+  const revealResult = spinMs <= 1800;
   layout(`
     <section class="panel stack spin-panel">
       <div class="row">
@@ -869,29 +870,51 @@ function renderOrderSpin() {
         <span class="pill">房间 ${state.room.code}</span>
       </div>
       <div class="spin-stage">
-        <div class="wheel" aria-hidden="true">
+        <div class="wheel ${revealResult ? "settling" : ""}" aria-hidden="true">
           ${orderedPlayers
             .map((player, index) => `<span style="--i:${index};--n:${orderedPlayers.length}">${escapeHtml(player.name.slice(0, 2))}</span>`)
             .join("")}
         </div>
-        <div class="spin-result">
-          <span class="muted">第一位落笔</span>
-          <strong>${escapeHtml(firstPlayer?.name || "即将揭晓")}</strong>
-          <small>${spinSeconds || 1} 秒后进入第一轮</small>
-        </div>
-      </div>
-      <div class="turn-order-list">
-        ${orderedPlayers
-          .map(
-            (player, index) => `
-              <div class="${index === 0 ? "selected" : ""}">
-                <span>${index + 1}</span>
-                <strong>${escapeHtml(player.name)}</strong>
+        ${
+          revealResult
+            ? `
+              <div class="spin-result revealed">
+                <span class="muted">第一位落笔</span>
+                <strong>${escapeHtml(firstPlayer?.name || "即将揭晓")}</strong>
+                <small>${spinSeconds || 1} 秒后进入第一轮</small>
               </div>
             `
-          )
-          .join("")}
+            : `
+              <div class="spin-result drawing">
+                <span class="muted">正在抽取</span>
+                <strong>?</strong>
+                <small>${spinSeconds || 1} 秒后揭晓顺序</small>
+              </div>
+            `
+        }
       </div>
+      ${
+        revealResult
+          ? `
+            <div class="turn-order-list revealed">
+              ${orderedPlayers
+                .map(
+                  (player, index) => `
+                    <div class="${index === 0 ? "selected" : ""}">
+                      <span>${index + 1}</span>
+                      <strong>${escapeHtml(player.name)}</strong>
+                    </div>
+                  `
+                )
+                .join("")}
+            </div>
+          `
+          : `
+            <div class="turn-order-list hidden-order">
+              ${orderedPlayers.map((_, index) => `<div><span>${index + 1}</span><strong>抽取中</strong></div>`).join("")}
+            </div>
+          `
+      }
     </section>
   `);
 }
