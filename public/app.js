@@ -328,8 +328,20 @@ function renderHome() {
 
   layout(`
     ${resumeCard}
-    <section class="grid">
-      <form class="panel stack" id="createForm">
+    <section class="home-intro">
+      <div>
+        <p class="eyebrow">ONLINE STORY GAME</p>
+        <h2>开一个房间，把故事交给下一位玩家。</h2>
+        <p>投票选开头，轮流接一小段，主持人给要求、补中间段，最后导出完整故事。</p>
+      </div>
+      <div class="feature-strip">
+        <span>2-6 人</span>
+        <span>轮流写作</span>
+        <span>AI 主持</span>
+      </div>
+    </section>
+    <section class="grid home-grid">
+      <form class="panel stack entry-card" id="createForm">
         <h2>创建房间</h2>
         <label>昵称<input name="name" maxlength="16" placeholder="例如：阿九" required /></label>
         <div class="split">
@@ -360,7 +372,7 @@ function renderHome() {
         <button type="submit">创建房间</button>
       </form>
 
-      <form class="panel stack" id="joinForm">
+      <form class="panel stack entry-card" id="joinForm">
         <h2>加入房间</h2>
         <label>昵称<input name="name" maxlength="16" placeholder="例如：小林" required /></label>
         <label>房间码<input name="code" maxlength="5" placeholder="ABCDE" required /></label>
@@ -572,14 +584,14 @@ function renderLobby() {
   const room = state.room;
   layout(
     `
-      <section class="grid">
-        <div class="panel stack">
+      <section class="grid lobby-grid">
+        <div class="panel stack room-card">
           <h2>房间码</h2>
           <div class="code">${room.code}</div>
           <p class="muted">把这个房间码发给朋友。当前支持 2–6 人。</p>
           ${renderPlayers()}
         </div>
-        <div class="panel stack">
+        <div class="panel stack settings-card">
           <h2>本局设置</h2>
           ${
             isHost()
@@ -615,7 +627,7 @@ function renderLobby() {
               `
           }
         </div>
-        <div class="panel stack wide-panel">
+        <div class="panel stack lobby-side">
           ${renderHostDiagnostics()}
           ${renderStyleVote()}
           ${renderRoomCleanup(room)}
@@ -705,12 +717,12 @@ function renderOpeningSelection() {
   const hasRerollVoted = rerollVotes.includes(state.player?.id);
   const rerollNames = rerollVotes.map(playerName).join("、");
   layout(`
-    <section class="panel stack">
+    <section class="panel stack opening-panel">
       <div class="row">
         <h2>选择故事开头</h2>
         <span class="pill">房间 ${state.room.code}</span>
       </div>
-      <div class="grid">
+      <div class="grid opening-grid">
         ${state.room.openingOptions
           .map(
             (option) => `
@@ -880,7 +892,7 @@ function renderStoryView() {
   layout(
     `
       <section class="reader-layout">
-        <div class="panel stack">
+        <div class="panel stack story-reader">
           <div class="row">
             <h2>${escapeHtml(title)}</h2>
             <span class="pill">房间 ${escapeHtml(room.code)}</span>
@@ -888,7 +900,7 @@ function renderStoryView() {
           <p class="muted">参与玩家：${escapeHtml(room.players.map((player) => player.name).join("、") || "暂无")}</p>
           ${renderStory()}
         </div>
-        <aside class="panel stack">
+        <aside class="panel stack reader-actions">
           <h3>分享故事</h3>
           <label>阅读链接<input id="shareLink" readonly value="${escapeHtml(storyShareUrl(room.code))}" /></label>
           <button id="copyShareLink" type="button">复制链接</button>
@@ -1058,7 +1070,7 @@ function renderPlaying() {
   const remaining = room.wordLimit - state.draft.length;
   layout(`
     <section class="game-grid">
-      <div class="panel stack">
+      <div class="panel stack story-panel">
         <div class="row">
           <h2>${escapeHtml(room.story.title)}</h2>
           <span class="pill">第 ${room.currentRound} / ${room.maxRounds} 轮</span>
@@ -1066,7 +1078,7 @@ function renderPlaying() {
         ${renderTitleTools(room)}
         ${renderStory()}
       </div>
-      <aside class="panel stack">
+      <aside class="panel stack turn-panel">
         <div class="turn-head">
           <h3>当前回合</h3>
           <span class="pill">${storyStyleLabel(room.storyStyle)}</span>
@@ -1188,7 +1200,7 @@ function renderEnding() {
   const shareUrl = storyShareUrl(state.room.code);
   layout(`
     <section class="game-grid">
-      <div class="panel stack">
+      <div class="panel stack story-panel">
         <div class="row">
           <h2>${escapeHtml(state.room.story.title)}</h2>
           <span class="pill">${state.room.status === "finished" ? "已完成" : "结尾阶段"}</span>
@@ -1196,7 +1208,7 @@ function renderEnding() {
         ${renderTitleTools(state.room)}
         ${renderStory()}
       </div>
-      <aside class="panel stack">
+      <aside class="panel stack turn-panel">
         <h3>收束故事</h3>
         ${
           state.room.status === "ending"
