@@ -58,6 +58,16 @@ export OPENROUTER_MODEL="openrouter/free"
 
 `openrouter/free` 会让 OpenRouter 自动选择当前可用的免费模型。免费模型偶尔会被上游限流；服务端会自动尝试备用免费模型，并在失败时回退到本地占位逻辑，保证游戏流程不中断。
 
+为了防止单个 API 爆掉，也可以再接一个 Groq key 作为备用：
+
+```bash
+export GROQ_API_KEY="你的 Groq API key"
+export GROQ_MODEL="llama-3.3-70b-versatile"
+export AI_FALLBACK_PROVIDERS="openrouter,groq,gemini,openai"
+```
+
+这样会优先调用 OpenRouter；如果 OpenRouter 限流、超时或模型不可用，就自动尝试 Groq。Groq 也失败时，才回退到本地工坊主持人。
+
 `AI_TIMEOUT_MS` 用来限制单次 AI 请求等待时间，默认 12000 毫秒，避免玩家点按钮后一直卡住。
 
 或者切换到 OpenAI：
@@ -93,7 +103,7 @@ export OPENAI_MODEL="gpt-5.2"
 - 完成页提供可分享阅读链接 `/story/房间码`
 - 导出完整故事为 Markdown
 - `/api/health` 健康检查接口，方便线上部署平台检测服务状态
-- `/api/ai-check` AI 连接检查接口，用来确认 Gemini/OpenRouter/OpenAI key 真的可调用
+- `/api/ai-check` AI 连接检查接口，用来确认 Gemini/OpenRouter/Groq/OpenAI key 真的可调用
 
 ## 文件结构
 

@@ -18,6 +18,7 @@ let lastGeneration = null;
 
 const OPENROUTER_DEFAULT_MODEL = "openrouter/free";
 const OPENROUTER_FALLBACK_MODELS = [OPENROUTER_DEFAULT_MODEL, "meta-llama/llama-3.2-3b-instruct:free"];
+const GROQ_DEFAULT_MODEL = "llama-3.3-70b-versatile";
 const CHINESE_RE = /[\u3400-\u9fff]/g;
 const LATIN_RE = /[A-Za-z]/g;
 const DEFAULT_AI_TIMEOUT_MS = 12000;
@@ -773,54 +774,92 @@ async function generateJson({ action = "JSON 生成", instructions, input, fallb
 }
 
 async function generateText({ action = "AI 生成", instructions, input, fallback, maxOutputTokens = 300 }) {
-  const provider = getAIProvider();
+  const providers = getAIProviderChain();
   const started = Date.now();
-  let text = fallback;
 
-  if (provider === "gemini") {
-    text = await generateGeminiText({ instructions, input, fallback, maxOutputTokens });
-  } else if (provider === "openrouter") {
-    text = await generateOpenRouterText({ instructions, input, fallback, maxOutputTokens });
-  } else if (provider === "openai") {
-    text = await generateOpenAIText({ instructions, input, fallback, maxOutputTokens });
+  for (const provider of providers) {
+    const text = await generateProviderText(provider, { instructions, input, fallback: "", maxOutputTokens });
+    if (text) {
+      recordGeneration({
+        action,
+        provider,
+        model: getAIModelName(provider),
+        durationMs: Date.now() - started,
+        usedFallback: false,
+        ok: true
+      });
+      return text;
+    }
   }
 
   recordGeneration({
     action,
-    provider,
-    model: getAIModelName(),
+    provider: providers.length ? providers.join(" -> ") : "local",
+    model: providers.length ? providers.map((provider) => getAIModelName(provider)).join(" -> ") : "local-fallback",
     durationMs: Date.now() - started,
-    usedFallback: provider === "local" || !text || text === fallback,
-    ok: provider !== "local" && Boolean(text) && text !== fallback
+    usedFallback: true,
+    ok: false
   });
-  return text;
+  return fallback;
+}
+
+async function generateProviderText(provider, options) {
+  if (provider === "gemini") return generateGeminiText(options);
+  if (provider === "openrouter") return generateOpenRouterText(options);
+  if (provider === "groq") return generateGroqText(options);
+  if (provider === "openai") return generateOpenAIText(options);
+  return "";
 }
 
 export function getAIProvider() {
-  const requested = String(process.env.AI_PROVIDER || "").toLowerCase();
-  if (requested === "local") return "local";
-  if (requested === "gemini" && process.env.GEMINI_API_KEY) return "gemini";
-  if (requested === "openrouter" && process.env.OPENROUTER_API_KEY) return "openrouter";
-  if (requested === "openai" && process.env.OPENAI_API_KEY) return "openai";
-  if (process.env.OPENROUTER_API_KEY) return "openrouter";
-  if (process.env.GEMINI_API_KEY) return "gemini";
-  if (process.env.OPENAI_API_KEY) return "openai";
-  return "local";
+  return getAIProviderChain()[0] || "local";
 }
 
-export function getAIModelName() {
-  const provider = getAIProvider();
+function getAIProviderChain() {
+  const requested = String(process.env.AI_PROVIDER || "").toLowerCase();
+  if (requested === "local") return [];
+
+  const configuredProviders = {
+    openrouter: Boolean(process.env.OPENROUTER_API_KEY),
+    groq: Boolean(process.env.GROQ_API_KEY),
+    gemini: Boolean(process.env.GEMINI_API_KEY),
+    openai: Boolean(process.env.OPENAI_API_KEY)
+  };
+  const defaultOrder = ["openrouter", "groq", "gemini", "openai"];
+  const requestedOrder = process.env.AI_FALLBACK_PROVIDERS
+    ? String(process.env.AI_FALLBACK_PROVIDERS)
+        .split(",")
+        .map((provider) => provider.trim().toLowerCase())
+        .filter(Boolean)
+    : defaultOrder;
+  const ordered = [];
+
+  if (configuredProviders[requested]) ordered.push(requested);
+  for (const provider of requestedOrder) {
+    if (configuredProviders[provider] && !ordered.includes(provider)) ordered.push(provider);
+  }
+  for (const provider of defaultOrder) {
+    if (configuredProviders[provider] && !ordered.includes(provider)) ordered.push(provider);
+  }
+
+  return ordered;
+}
+
+export function getAIModelName(provider = getAIProvider()) {
   if (provider === "gemini") return process.env.GEMINI_MODEL || "gemini-2.5-flash";
   if (provider === "openrouter") return process.env.OPENROUTER_MODEL || OPENROUTER_DEFAULT_MODEL;
+  if (provider === "groq") return process.env.GROQ_MODEL || GROQ_DEFAULT_MODEL;
   if (provider === "openai") return process.env.OPENAI_MODEL || "gpt-5.2";
   return "local-fallback";
 }
 
 export function getAIStatusSnapshot() {
+  const providers = getAIProviderChain();
   return {
-    ai: getAIProvider() !== "local",
-    provider: getAIProvider(),
-    model: getAIModelName(),
+    ai: providers.length > 0,
+    provider: providers[0] || "local",
+    fallbackProviders: providers.slice(1),
+    model: providers.length ? providers.map((provider) => getAIModelName(provider)).join(" -> ") : "local-fallback",
     timeoutMs: getAITimeoutMs(),
     lastError: lastAIError,
     lastGeneration
@@ -956,6 +995,45 @@ async function generateOpenRouterText({ instructions, input, fallback, maxOutput
   }
 
   return fallback;
+}
+
+async function generateGroqText({ instructions, input, fallback, maxOutputTokens }) {
+  const apiKey = process.env.GROQ_API_KEY;
+  const model = process.env.GROQ_MODEL || GROQ_DEFAULT_MODEL;
+  try {
+    const response = await fetchWithTimeout("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: instructions },
+          { role: "user", content: input }
+        ],
+        max_completion_tokens: maxOutputTokens,
+        temperature: 0.8
+      })
+    }, `Groq ${model}`);
+
+    if (!response.ok) {
+      const message = await response.text();
+      recordAIError("groq", response.status, `${model}: ${message}`);
+      console.warn(`Groq request failed for ${model}: ${response.status} ${message}`);
+      return fallback;
+    }
+
+    const data = await response.json();
+    const text = extractChatCompletionText(data);
+    if (text) lastAIError = null;
+    return text || fallback;
+  } catch (error) {
+    recordAIError("groq", "NETWORK", `${model}: ${error.message}`);
+    console.warn(`Groq request failed for ${model}: ${error.message}`);
+    return fallback;
+  }
 }
 
 async function requestOpenRouterModel({ apiKey, model, instructions, input, maxOutputTokens }) {

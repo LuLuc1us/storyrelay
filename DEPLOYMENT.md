@@ -41,9 +41,19 @@ APP_PUBLIC_URL=https://你的 Render 地址
 
 `openrouter/free` 会自动选择当前可用的免费模型。免费模型可能遇到上游限流；本项目会自动尝试备用免费模型，仍失败时回退到本地占位逻辑。
 
+建议再添加 Groq 作为第二备用通道：
+
+```text
+GROQ_API_KEY=你的 Groq API key
+GROQ_MODEL=llama-3.3-70b-versatile
+AI_FALLBACK_PROVIDERS=openrouter,groq,gemini,openai
+```
+
+这时服务端会按顺序尝试：OpenRouter -> Groq -> Gemini -> OpenAI。没有配置 key 的供应商会自动跳过；所有供应商都失败时，游戏仍会使用本地工坊主持人兜底。
+
 `AI_TIMEOUT_MS` 默认 12000，表示单次 AI 请求最多等待约 12 秒，超时后会走本地主持人兜底。
 
-没有 `GEMINI_API_KEY`、`OPENROUTER_API_KEY` 或 `OPENAI_API_KEY` 时，游戏仍可运行，但 AI 主持人会使用本地占位逻辑。
+没有 `GEMINI_API_KEY`、`OPENROUTER_API_KEY`、`GROQ_API_KEY` 或 `OPENAI_API_KEY` 时，游戏仍可运行，但 AI 主持人会使用本地占位逻辑。
 
 如果要使用 OpenAI：
 
@@ -81,6 +91,9 @@ healthCheckPath: /api/health
 ```text
 AI_PROVIDER=openrouter
 OPENROUTER_MODEL=openrouter/free
+GROQ_API_KEY=你的 Groq API key
+GROQ_MODEL=llama-3.3-70b-versatile
+AI_FALLBACK_PROVIDERS=openrouter,groq,gemini,openai
 ```
 
 ### 方式 B：手动创建 Web Service
@@ -139,7 +152,7 @@ docker run -p 3000:3000 \
 /api/health
 ```
 
-返回里的 `ai: true` 表示已经识别到真实 AI key；`provider` 会显示当前使用 `gemini`、`openrouter`、`openai` 或 `local`。
+返回里的 `ai: true` 表示已经识别到真实 AI key；`provider` 会显示优先使用的供应商，`fallbackProviders` 会显示备用供应商。
 `storage: "supabase"` 表示已经启用数据库保存；`storage: "memory"` 表示仍然只存在服务内存里。
 
 线上可玩时应类似：
@@ -148,8 +161,9 @@ docker run -p 3000:3000 \
 {
   "ok": true,
   "ai": true,
-  "provider": "gemini",
-  "model": "gemini-2.5-flash"
+  "provider": "openrouter",
+  "fallbackProviders": ["groq"],
+  "model": "openrouter/free -> llama-3.3-70b-versatile"
 }
 ```
 
