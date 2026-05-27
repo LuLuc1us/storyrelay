@@ -917,8 +917,7 @@ a button {
     align-items: stretch;
   }
 
-  .reader-actions,
-  .turn-panel {
+  .reader-actions {
     order: -1;
   }
 
