@@ -412,7 +412,7 @@ async function handleApi(req, res) {
           res,
           heartbeat: setInterval(() => {
             try {
-              res.write(": ping\n\n");
+              res.write("event: ping\ndata: {}\n\n");
             } catch {
               removeStream(code, client);
             }

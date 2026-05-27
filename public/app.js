@@ -1,5 +1,6 @@
 const app = document.querySelector("#app");
 const storyPathMatch = location.pathname.match(/^\/story\/([A-Z0-9]{5})\/?$/i);
+const REQUEST_TIMEOUT_MS = 70000;
 
 const state = {
   room: null,
@@ -28,22 +29,36 @@ const styleOptions = [
 
 const api = {
   async get(path) {
-    const response = await fetch(path);
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "操作失败。");
-    return data;
+    return request(path);
   },
   async post(path, body = {}) {
-    const response = await fetch(path, {
+    return request(path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body)
     });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "操作失败。");
-    return data;
   }
 };
+
+async function request(path, options = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(path, { ...options, signal: controller.signal });
+    const text = await response.text();
+    const data = text ? JSON.parse(text) : {};
+    if (!response.ok) throw new Error(data.error || "操作失败。");
+    return data;
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error("服务器这次响应太久了。请稍等几秒再试，刚唤醒的免费实例可能会慢一点。");
+    }
+    if (error instanceof SyntaxError) throw new Error("服务器返回了异常内容，请刷新页面再试。");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 function savePlayer(player) {
   state.player = player;
@@ -141,6 +156,12 @@ function connect(code) {
     }
     render();
   };
+  state.eventSource.addEventListener("ping", () => {
+    if (state.connectionStatus !== "online") {
+      state.connectionStatus = "online";
+      render();
+    }
+  });
   state.eventSource.onerror = () => {
     state.connectionStatus = "reconnecting";
     state.error = "同步连接暂时断开，浏览器会自动重连。";
