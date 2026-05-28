@@ -33,8 +33,8 @@ export async function createStoryTitle(storyText = "", storyStyle = "suspense") 
   const title = await generateText({
     action: "故事标题",
     instructions:
-      `你是故事接龙游戏《故事接龙工坊》的标题编辑。当前风格：${style.label}，${style.prompt}。请给当前故事起一个简体中文标题。标题要像作品名，不要像说明句；不要用书名号；不要输出英文；不要超过10个中文字。`,
-    input: `当前故事：\n${storyText || "故事刚开始。"}\n\n只输出一个中文标题，不要解释。`,
+      `为《故事接龙工坊》起标题。风格：${style.label}，${style.prompt}。要求：简体中文，像作品名，不像说明句；不用书名号；不含英文；10字以内。`,
+    input: `故事：\n${storyText || "故事刚开始。"}\n\n只输出标题。`,
     fallback,
     maxOutputTokens: 40
   });
@@ -48,8 +48,8 @@ export async function createRequirement(roundNumber, storyText = "", storyStyle 
   const aiRequirement = await generateJson({
     action: "写作要求",
     instructions:
-      `你是多人故事接龙游戏《故事接龙工坊》的主持人。请生成一组简体中文写作要求，必须接住当前故事，而不是突然换题材。当前风格：${style.label}，${style.prompt}。关键词优先取自故事里已经出现的物件、地点、人物关系或相近意象；如果故事刚开始，就选日常、自然、好写的词。转折要像一条可继续写的剧情提示，不要写晦涩谜语，不要指定违和动物、稀有物品或过于具体的道具。禁止输出英文。只输出 JSON，不要解释。`,
-    input: `当前轮数：${roundNumber}\n当前故事：${storyText || "故事刚开始。"}\n\n请输出 JSON：{"keyword":"一个1到4字的中文自然关键词","emotion":"一种中文情绪或氛围","twist":"一句中文剧情转折要求，以句号结尾"}。所有字段都必须是中文。关键词要能自然放进下一段，转折要和当前故事已有线索有关。`,
+      `生成一组接龙写作要求。风格：${style.label}，${style.prompt}。只输出 JSON。规则：中文；关键词1-4字、自然好写，优先用故事已有物件/地点/关系；转折接住已有线索，可继续写；不要谜语、英文、稀有道具或突兀题材。`,
+    input: `轮数：${roundNumber}\n故事：${storyText || "故事刚开始。"}\n\n格式：{"keyword":"词","emotion":"情绪","twist":"一句剧情转折。"}`,
     fallback: null
   });
 
@@ -237,8 +237,8 @@ export async function createBridgeSegmentResult(storyText = "", storyStyle = "su
   const bridge = await generateText({
     action: tone === "balanced" ? "系统中间段" : `系统中间段-${tone}`,
     instructions:
-      `你是故事接龙游戏主持人。当前风格：${style.label}，${style.prompt}。请用简体中文写一段过渡段，帮助玩家故事更连贯。${toneInstruction(tone)}要求：只接住最近2段的具体线索；少用抽象比喻；不要堆砌“无形、命运、世界、真相”等大词；不要结束故事，不要否定玩家设定，不要抢走主角行动权。禁止输出英文。`,
-    input: `当前完整故事：\n${storyText}\n\n请写 70 到 130 个中文字的系统中间段。只输出中文段落正文，不要解释。`,
+      `写接龙过渡段。风格：${style.label}，${style.prompt}。${toneInstruction(tone)}规则：简体中文；只接最近线索；具体清楚；不结束故事；不否定玩家设定；不抢主角行动；不用英文和空泛大词。`,
+    input: `故事：\n${storyText}\n\n输出70-130字正文，不解释。`,
     fallback,
     maxOutputTokens: 170
   });
@@ -260,8 +260,8 @@ export async function createEndingSegmentResult(storyText = "", storyStyle = "su
   const ending = await generateText({
     action: tone === "balanced" ? "系统结尾" : `系统结尾-${tone}`,
     instructions:
-      `你是故事接龙游戏主持人。当前风格：${style.label}，${style.prompt}。请根据完整故事写一个有余味的简体中文结尾。${toneInstruction(tone)}不要解释太多，保留一点开放感。禁止输出英文。`,
-    input: `完整故事：\n${storyText}\n\n请写 150 到 250 个中文字的最终结尾。只输出中文结尾正文，不要解释。`,
+      `写最终结尾。风格：${style.label}，${style.prompt}。${toneInstruction(tone)}规则：简体中文；收束主要线索；保留余味；不要解释过度；不含英文。`,
+    input: `故事：\n${storyText}\n\n输出150-250字正文，不解释。`,
     fallback,
     maxOutputTokens: 360
   });
@@ -350,8 +350,8 @@ async function createOpeningOptionsWithAI(count, storyStyle = "suspense") {
   const text = await generateText({
     action: "故事开头",
     instructions:
-      `你是故事接龙游戏主持人。当前风格：${style.label}，${style.prompt}。请生成简体中文故事开头，适合多人继续创作。每个开头必须是具体场景陈述句，有清楚的人、地点、物件或事件。不要写成谜语、宣传语、问题、设定简介或“一个……的……”模板。禁止输出英文、拼音和任何拉丁字母。`,
-    input: `请生成 ${count} 个不同的中文故事开头。每行一个，不要编号，不要解释，不要英文。句式要多样，尽量像“凌晨三点，整座城市的钟同时停在了同一秒。”这种具体陈述句。`,
+      `生成接龙故事开头。风格：${style.label}，${style.prompt}。规则：简体中文；具体场景陈述句；有人/地点/物件/事件；句式多样；不要谜语、问题、设定简介、“一个……的……”模板、英文或拼音。`,
+    input: `生成${count}个开头，每行一个。不编号，不解释。`,
     fallback: fallbackOptions.join("\n"),
     maxOutputTokens: 260
   });
@@ -519,8 +519,8 @@ export async function polishSegment(text, requirement, storyText = "", maxLength
   const aiPolished = await generateText({
     action: "段落润色",
     instructions:
-      "你是故事接龙游戏里的中文编辑助手。玩家原文可能来自语音识别，可能有错字、断句错误、同音误识别或表达含混。请先根据上下文理解玩家想表达的剧情，再把它整理成更明确、更顺、更可读的一小段中文。必须保留玩家原意、人物行动和剧情事实，不要扩写成另一段故事，不要替玩家新增重大设定。只输出润色后的段落正文，不要写标题、解释、评价、理由、项目符号或修改说明。",
-    input: `当前故事上下文：\n${storyText || "暂无。"}\n\n本轮要求：关键词「${requirement?.keyword || "无"}」，情绪「${requirement?.emotion || "无"}」，转折「${requirement?.twist || "无"}」\n\n玩家原文：\n${text}\n\n请先理解原意，再整理为一小段中文。长度尽量接近原文，确保关键词仍然出现。`,
+      "润色玩家段落。玩家原文可能有语音识别错字或断句问题。规则：保留原意、人物行动和剧情事实；只让表达更清楚顺口；不新增重大设定；不扩写成新剧情；只输出润色正文；不要标题、解释、评价、列表。",
+    input: `故事上下文：\n${storyText || "暂无。"}\n\n要求：关键词「${requirement?.keyword || "无"}」；情绪「${requirement?.emotion || "无"}」；转折「${requirement?.twist || "无"}」\n\n玩家原文：\n${text}\n\n输出长度接近原文，并保留关键词。`,
     fallback: "",
     maxOutputTokens: 260
   });
