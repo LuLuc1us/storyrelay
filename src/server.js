@@ -244,7 +244,7 @@ async function advanceTurn(room) {
 async function refreshStoryTitle(room, reason = "auto") {
   if (!room?.story?.openingText) return;
   const playerSegmentCount = room.story.segments.filter((segment) => segment.authorType === "player").length;
-  if (playerSegmentCount < 1 && reason !== "ending") return;
+  if (playerSegmentCount < 1 && reason !== "ending" && reason !== "opening") return;
   if (room.story.titleLocked) return;
 
   const title = await createStoryTitle(getRoomStoryText(room), room.storyStyle);
@@ -253,6 +253,13 @@ async function refreshStoryTitle(room, reason = "auto") {
     room.story.titleSource = reason;
     room.story.titleUpdatedAt = now();
   }
+}
+
+function canManageStoryTitle(room, playerId) {
+  if (!room?.story?.openingText || !playerId) return false;
+  if (room.status !== "playing") return false;
+  if (room.playerTurnsCompleted !== 0 || room.currentRound !== 1) return false;
+  return room.currentTurnPlayerId === playerId;
 }
 
 function exportMarkdown(room) {
@@ -409,6 +416,7 @@ function scheduleOrderSpin(room) {
         if (!currentRoom || currentRoom.status !== "spinning_order") return;
         currentRoom.status = "playing";
         currentRoom.orderSpinEndsAt = null;
+        await refreshStoryTitle(currentRoom, "opening");
         currentRoom.currentRequirement = await createRequirement(1, getRoomStoryText(currentRoom), currentRoom.storyStyle);
         addRoomEvent(currentRoom, "turn", `第一位落笔的是 ${playerLabel(currentRoom, currentRoom.currentTurnPlayerId)}。`);
         await saveAndBroadcast(currentRoom);
@@ -769,26 +777,26 @@ async function handleApi(req, res) {
       }
 
       if (req.method === "POST" && action === "rename-story") {
-        if (playerId !== room.hostId) return sendJson(res, 403, { error: "只有房主可以修改标题。" });
+        if (!canManageStoryTitle(room, playerId)) return sendJson(res, 403, { error: "只有第一位落笔者可以在开局时修改标题。" });
         const title = String(body.title || "").trim().replace(/^["“”《]+|["“”》]+$/g, "").slice(0, 16);
         if (title.length < 2) return sendJson(res, 400, { error: "标题至少需要两个字。" });
         room.story.title = title;
         room.story.titleLocked = true;
-        room.story.titleSource = "host";
+        room.story.titleSource = "first_player";
         room.story.titleUpdatedAt = now();
-        addRoomEvent(room, "story", `${playerLabel(room, playerId)} 修改了故事标题。`, playerId);
+        addRoomEvent(room, "story", `${playerLabel(room, playerId)} 定下了故事标题。`, playerId);
         await saveAndBroadcast(room);
         sendJson(res, 200, { room: publicRoom(room) });
         return;
       }
 
       if (req.method === "POST" && action === "suggest-title") {
-        if (playerId !== room.hostId) return sendJson(res, 403, { error: "只有房主可以生成标题。" });
+        if (!canManageStoryTitle(room, playerId)) return sendJson(res, 403, { error: "只有第一位落笔者可以在开局时生成标题。" });
         room.story.title = await createStoryTitle(getRoomStoryText(room), room.storyStyle);
-        room.story.titleLocked = false;
-        room.story.titleSource = "suggested";
+        room.story.titleLocked = true;
+        room.story.titleSource = "first_player_ai";
         room.story.titleUpdatedAt = now();
-        addRoomEvent(room, "story", `${playerLabel(room, playerId)} 生成了新的故事标题。`, playerId);
+        addRoomEvent(room, "story", `${playerLabel(room, playerId)} 让 AI 主持人定下了故事标题。`, playerId);
         await saveAndBroadcast(room);
         sendJson(res, 200, { room: publicRoom(room) });
         return;

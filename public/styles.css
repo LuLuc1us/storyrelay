@@ -720,6 +720,11 @@ a button {
   justify-content: flex-start;
 }
 
+.title-tools p {
+  margin: 0;
+  line-height: 1.55;
+}
+
 .title-tools button {
   min-height: 34px;
 }

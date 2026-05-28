@@ -259,6 +259,13 @@ function isCurrentPlayer() {
   return state.player?.id && state.room?.currentTurnPlayerId === state.player.id;
 }
 
+function canManageStoryTitle(room = state.room) {
+  if (!room?.story?.openingText || !state.player?.id) return false;
+  if (room.status !== "playing") return false;
+  if (room.playerTurnsCompleted !== 0 || room.currentRound !== 1) return false;
+  return room.currentTurnPlayerId === state.player.id;
+}
+
 function storyStyleLabel(value) {
   return styleOptions.find(([key]) => key === value)?.[1] || "悬疑怪谈";
 }
@@ -645,12 +652,13 @@ function renderHostDiagnostics() {
 }
 
 function renderTitleTools(room) {
-  if (!isHost() || !room.story?.openingText) return "";
+  if (!canManageStoryTitle(room)) return "";
   return `
     <div class="title-tools">
       <label>故事标题
         <input id="storyTitleInput" maxlength="16" value="${escapeHtml(room.story.title || "")}" />
       </label>
+      <p class="muted">第一位落笔者可以在写第一段前定下标题；保存后系统不会再自动覆盖。</p>
       <div class="row">
         <button id="saveStoryTitle" class="secondary" type="button">保存标题</button>
         <button id="suggestStoryTitle" class="secondary" type="button">生成标题</button>
