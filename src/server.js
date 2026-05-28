@@ -748,7 +748,7 @@ async function handleApi(req, res) {
         if (text.length > room.wordLimit) return sendJson(res, 400, { error: `不能超过 ${room.wordLimit} 字。` });
 
         sendJson(res, 200, {
-          polish: await polishSegment(text, room.currentRequirement, getRoomStoryText(room))
+          polish: await polishSegment(text, room.currentRequirement, getRoomStoryText(room), room.wordLimit)
         });
         return;
       }

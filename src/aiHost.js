@@ -515,7 +515,7 @@ function weaveTwist(text, twist) {
   return next;
 }
 
-export async function polishSegment(text, requirement, storyText = "") {
+export async function polishSegment(text, requirement, storyText = "", maxLength = 220) {
   const aiPolished = await generateText({
     action: "段落润色",
     instructions:
@@ -533,7 +533,9 @@ export async function polishSegment(text, requirement, storyText = "") {
   ) {
     return {
       original: text,
-      polished: trimToLength(ensureSentence(cleanedAIPolished), 220),
+      polished: trimToLength(ensureSentence(cleanedAIPolished), maxLength),
+      source: "AI 主持人",
+      sourceLabel: "AI 主持人",
       notes: [
         "AI 主持人先按上下文理解原意，再做了轻度润色。",
         requirement?.keyword ? `检查了本轮关键词「${requirement.keyword}」。` : "检查了本轮要求。",
@@ -555,7 +557,9 @@ export async function polishSegment(text, requirement, storyText = "") {
 
   return {
     original: text,
-    polished,
+    polished: trimToLength(polished, maxLength),
+    source: "工坊主持人",
+    sourceLabel: "工坊主持人",
     notes
   };
 }
@@ -677,6 +681,9 @@ function isNaturalKeyword(keyword) {
   const cleaned = String(keyword || "").trim();
   if (cleaned.length < 1 || cleaned.length > 4) return false;
   if (/[，。！？、；：\s]/.test(cleaned)) return false;
+  if (/^(一个|一位|一只|一种|某个|那个|这个|所有|最后|正在|突然)/.test(cleaned)) return false;
+  if (/(之后|以前|之前|时候|当时|后来|以内|之外|之中|之下|之上|里面|外面|黑暗中|沉默中|下车后|醒来后)$/.test(cleaned)) return false;
+  if (/(看到|发现|走进|推开|下车|恢复|变成|正在|等待|藏着|听见)$/.test(cleaned)) return false;
   return true;
 }
 

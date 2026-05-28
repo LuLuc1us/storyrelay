@@ -52,8 +52,12 @@ test("rejects overblown bridge narration", () => {
 
 test("keeps requirement keywords short and natural", () => {
   assert.equal(isNaturalKeyword("镜子"), true);
+  assert.equal(isNaturalKeyword("车票"), true);
   assert.equal(isNaturalKeyword("一只突然出现的乌鸦"), false);
   assert.equal(isNaturalKeyword("门锁，红光"), false);
+  assert.equal(isNaturalKeyword("客下车后"), false);
+  assert.equal(isNaturalKeyword("黑暗中"), false);
+  assert.equal(isNaturalKeyword("正在播音"), false);
 });
 
 test("rejects requirements that drift away from the current story", () => {
