@@ -48,7 +48,7 @@ export async function createRequirement(roundNumber, storyText = "", storyStyle 
   const aiRequirement = await generateJson({
     action: "写作要求",
     instructions:
-      `生成一组接龙写作要求。风格：${style.label}，${style.prompt}。只输出 JSON。规则：中文；关键词1-4字、自然好写，优先用故事已有物件/地点/关系；转折接住已有线索，可继续写；不要谜语、英文、稀有道具或突兀题材。`,
+      `生成一组接龙写作要求。风格：${style.label}，${style.prompt}。只输出 JSON，只有 keyword/emotion/twist 三项。规则：中文；关键词1-4字、自然好写，优先用故事已有物件/地点/关系；转折接住已有线索，可继续写；不要谜语、英文、稀有道具或突兀题材。`,
     input: `轮数：${roundNumber}\n故事：${storyText || "故事刚开始。"}\n\n格式：{"keyword":"词","emotion":"情绪","twist":"一句剧情转折。"}`,
     fallback: null
   });
